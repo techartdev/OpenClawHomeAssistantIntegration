@@ -163,9 +163,13 @@ async def _async_try_discover_addon(hass: HomeAssistant) -> dict[str, Any] | Non
         )
         return None
 
-    # Warn early if the OpenAI-compatible API is disabled — /v1/models will return
-    # HTML and the connection probe will fail with a misleading error.
-    if not addon_options.get("enable_openai_api", False):
+    # Warn only when Supervisor explicitly reports the option as disabled.
+    # If the key is missing (older/newer addon schema), do not warn.
+    enable_openai_api = addon_options.get("enable_openai_api")
+    if enable_openai_api is None and isinstance(addon_options.get("gateway"), dict):
+        enable_openai_api = addon_options["gateway"].get("enable_openai_api")
+
+    if enable_openai_api is False:
         _LOGGER.warning(
             "Addon option 'enable_openai_api' is false. "
             "The integration requires this to be enabled. "

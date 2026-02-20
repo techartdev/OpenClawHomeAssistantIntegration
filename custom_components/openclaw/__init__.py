@@ -13,6 +13,11 @@ from typing import Any
 
 import voluptuous as vol
 
+try:
+    from homeassistant.components.lovelace.const import LOVELACE_DATA
+except ImportError:  # pragma: no cover
+    LOVELACE_DATA = "lovelace"
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant, ServiceCall, callback
@@ -175,15 +180,21 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     Called as a fire-and-forget task from async_setup_entry.
     Wrapped entirely in try/except so it can NEVER crash the integration.
     """
-    frontend_key = f"{DOMAIN}_frontend_registration_started"
-    if hass.data.get(frontend_key):
+    frontend_done_key = f"{DOMAIN}_frontend_registered"
+    frontend_task_key = f"{DOMAIN}_frontend_registration_task"
+
+    if hass.data.get(frontend_done_key):
         return
-    hass.data[frontend_key] = True
+
+    existing_task = hass.data.get(frontend_task_key)
+    if existing_task and not existing_task.done():
+        return
 
     async def _register_with_retries() -> None:
-        for _ in range(12):
+        for _ in range(60):
             url = await _async_register_static_path(hass)
             if url and await _async_add_lovelace_resource(hass, url):
+                hass.data[frontend_done_key] = True
                 return
             await asyncio.sleep(5)
 
@@ -193,9 +204,17 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
             _CARD_URL,
         )
 
-    hass.async_create_task(_register_with_retries())
+    task = hass.async_create_task(_register_with_retries())
+    hass.data[frontend_task_key] = task
+
+    def _clear_task(_fut: asyncio.Future) -> None:
+        hass.data.pop(frontend_task_key, None)
+
+    task.add_done_callback(_clear_task)
 
     async def _on_ha_started(_event) -> None:
+        if hass.data.get(frontend_done_key):
+            return
         await _register_with_retries()
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _on_ha_started)
@@ -230,15 +249,20 @@ async def _async_register_static_path(hass: HomeAssistant) -> str | None:
 
 async def _async_add_lovelace_resource(hass: HomeAssistant, url: str) -> bool:
     """Add the card URL to Lovelace's resource store if not already present."""
-    # Lovelace stores resources in hass.data["lovelace"]["resources"].
-    # It is a ResourceStorageCollection with:
+    # Lovelace stores resources in hass.data[LOVELACE_DATA].resources on
+    # modern Home Assistant versions (fallback to legacy dict key below).
+    # Resource collection supports:
     #   .async_items()          → list of {"id", "res_type", "url"} dicts
     #   .async_create_item(data) → persists a new resource
-    lovelace_data = hass.data.get("lovelace")
+    lovelace_data = hass.data.get(LOVELACE_DATA) or hass.data.get("lovelace")
     if not lovelace_data:
         return False
 
-    resource_collection = lovelace_data.get("resources")
+    if isinstance(lovelace_data, dict):
+        resource_collection = lovelace_data.get("resources")
+    else:
+        resource_collection = getattr(lovelace_data, "resources", None)
+
     if resource_collection is None:
         return False
 

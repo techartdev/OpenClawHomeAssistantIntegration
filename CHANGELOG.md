@@ -2,6 +2,25 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.9] - 2026-02-20
+
+### Fixed
+- Updated Lovelace resource registration to use Home Assistant 2026.2 storage API (`hass.data[LOVELACE_DATA].resources`) with legacy fallback.
+- Prevented silent resource-registration failure caused by reading the old `hass.data["lovelace"]` key only.
+
+### Changed
+- Updated `hacs.json` minimum Home Assistant version to `2026.2.0`.
+
+## [0.1.8] - 2026-02-20
+
+### Fixed
+- Removed false-positive config-flow warning for `enable_openai_api=false` when Supervisor options are missing or use a different schema.
+- Frontend auto-registration no longer gets stuck after an early startup failure.
+- Card resource registration now retries for longer and can recover on integration reload.
+
+### Changed
+- Frontend registration task is now de-duplicated while running and marked complete only after successful Lovelace resource creation.
+
 ## [0.1.7] - 2026-02-20
 
 ### Fixed

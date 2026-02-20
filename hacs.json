@@ -3,5 +3,5 @@
   "render_readme": true,
   "domains": ["sensor", "binary_sensor", "conversation"],
   "iot_class": "local_polling",
-  "homeassistant": "2024.1.0"
+  "homeassistant": "2026.2.0"
 }
