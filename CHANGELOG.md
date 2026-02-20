@@ -2,6 +2,22 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.26] - 2026-02-20
+
+### Added
+- Added integration option `allow_brave_webspeech` to **Settings → Devices & Services → OpenClaw → Configure**.
+- Frontend card now reads this option via `openclaw/get_settings` and applies it automatically.
+
+### Changed
+- Card version bumped to `0.2.6` and cache-busting URL updated to `v=0.1.26`.
+
+## [0.1.25] - 2026-02-20
+
+### Fixed
+- Voice input language now prioritizes integration/HA locale settings more reliably (including frontend locale fallback), reducing unwanted fallback to English.
+- Voice-mode assistant replies now use improved speech synthesis voice selection for the active language and better voice-loading handling.
+- Reworked chat pending-response tracking to support multiple in-flight messages without leaving stuck typing indicators.
+
 ## [0.1.24] - 2026-02-20
 
 ### Fixed

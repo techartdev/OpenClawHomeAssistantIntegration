@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.2.4";
+const CARD_VERSION = "0.2.6";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -67,7 +67,10 @@ class OpenClawChatCard extends HTMLElement {
     this._voiceRetryTimer = null;
     this._voiceRetryCount = 0;
     this._voiceNetworkErrorCount = 0;
+    this._pendingResponses = 0;
     this._speechLangOverride = null;
+    this._integrationVoiceLanguage = null;
+    this._allowBraveWebSpeechIntegration = false;
     this._voiceBackendBlocked = false;
   }
 
@@ -162,23 +165,25 @@ class OpenClawChatCard extends HTMLElement {
     const sessionId = this._getSessionId();
     if (data.session_id && data.session_id !== sessionId) return;
 
-    // If we're waiting for a response, update the last "thinking" message
-    if (this._isProcessing) {
-      this._isProcessing = false;
-      this._clearThinkingTimer();
-      // Replace the thinking indicator with the actual response
-      const thinkingIdx = this._messages.findIndex((m) => m._thinking);
-      if (thinkingIdx >= 0) {
-        this._messages[thinkingIdx] = {
-          role: "assistant",
-          content: data.message,
-          timestamp: data.timestamp || new Date().toISOString(),
-        };
-      } else {
-        this._addMessage("assistant", data.message);
+    const thinkingIdx = this._messages.findIndex((m) => m._thinking);
+    if (thinkingIdx >= 0) {
+      this._messages[thinkingIdx] = {
+        role: "assistant",
+        content: data.message,
+        timestamp: data.timestamp || new Date().toISOString(),
+      };
+      if (this._pendingResponses > 0) {
+        this._pendingResponses -= 1;
       }
     } else {
       this._addMessage("assistant", data.message);
+    }
+
+    this._isProcessing = this._pendingResponses > 0;
+    if (!this._isProcessing) {
+      this._clearThinkingTimer();
+    } else {
+      this._startThinkingTimer();
     }
 
     this._persistMessages();
@@ -194,6 +199,7 @@ class OpenClawChatCard extends HTMLElement {
   _clearChat() {
     this._messages = [];
     this._isProcessing = false;
+    this._pendingResponses = 0;
     this._clearThinkingTimer();
     this._persistMessages();
     this._render();
@@ -273,6 +279,7 @@ class OpenClawChatCard extends HTMLElement {
       if (shouldReplace) {
         this._messages = validMessages;
         this._isProcessing = false;
+        this._pendingResponses = 0;
         this._clearThinkingTimer();
         this._persistMessages();
         this._render();
@@ -307,6 +314,10 @@ class OpenClawChatCard extends HTMLElement {
       this._wakeWordEnabled = !!result?.wake_word_enabled;
       this._wakeWord = (result?.wake_word || "hey openclaw").toString().trim().toLowerCase();
       this._alwaysVoiceMode = !!result?.always_voice_mode;
+      this._allowBraveWebSpeechIntegration = !!result?.allow_brave_webspeech;
+      this._integrationVoiceLanguage = result?.language
+        ? this._normalizeSpeechLanguage(result.language)
+        : null;
 
       if (this._alwaysVoiceMode && !this._isVoiceMode) {
         this._isVoiceMode = true;
@@ -321,9 +332,10 @@ class OpenClawChatCard extends HTMLElement {
   // ── Thinking timer ──────────────────────────────────────────────────
 
   _startThinkingTimer() {
-    this._clearThinkingTimer();
+    if (this._thinkingTimer) return;
     this._thinkingTimer = setTimeout(() => {
-      if (!this._isProcessing) return;
+      this._thinkingTimer = null;
+      if (this._pendingResponses <= 0) return;
       const idx = this._messages.findIndex((m) => m._thinking);
       if (idx >= 0) {
         this._messages[idx] = {
@@ -332,8 +344,13 @@ class OpenClawChatCard extends HTMLElement {
           timestamp: new Date().toISOString(),
           _error: true,
         };
+        this._pendingResponses = Math.max(0, this._pendingResponses - 1);
       }
-      this._isProcessing = false;
+      this._isProcessing = this._pendingResponses > 0;
+      if (this._isProcessing) {
+        this._startThinkingTimer();
+      }
+      this._persistMessages();
       this._render();
     }, THINKING_TIMEOUT_MS);
   }
@@ -364,6 +381,7 @@ class OpenClawChatCard extends HTMLElement {
 
     // Add thinking indicator with timeout safeguard
     this._isProcessing = true;
+    this._pendingResponses += 1;
     this._messages.push({
       role: "assistant",
       content: "",
@@ -383,7 +401,13 @@ class OpenClawChatCard extends HTMLElement {
     } catch (err) {
       console.error("OpenClaw: Failed to send message:", err);
       // Replace thinking with error
-      const thinkingIdx = this._messages.findIndex((m) => m._thinking);
+      let thinkingIdx = -1;
+      for (let idx = this._messages.length - 1; idx >= 0; idx -= 1) {
+        if (this._messages[idx]?._thinking) {
+          thinkingIdx = idx;
+          break;
+        }
+      }
       if (thinkingIdx >= 0) {
         this._messages[thinkingIdx] = {
           role: "assistant",
@@ -392,7 +416,14 @@ class OpenClawChatCard extends HTMLElement {
           _error: true,
         };
       }
-      this._isProcessing = false;
+      if (this._pendingResponses > 0) {
+        this._pendingResponses -= 1;
+      }
+      this._isProcessing = this._pendingResponses > 0;
+      if (!this._isProcessing) {
+        this._clearThinkingTimer();
+      }
+      this._persistMessages();
       this._render();
     }
   }
@@ -439,9 +470,11 @@ class OpenClawChatCard extends HTMLElement {
     }
 
     const configuredLang = this._config.voice_language;
-    const hassLang = this._hass?.selectedLanguage || this._hass?.language;
+    const integrationLang = this._integrationVoiceLanguage;
+    const hassLang =
+      this._hass?.locale?.language || this._hass?.selectedLanguage || this._hass?.language;
     const browserLang = navigator.language;
-    const preferred = configuredLang || hassLang || browserLang || "en-US";
+    const preferred = configuredLang || integrationLang || hassLang || browserLang || "en-US";
     return this._normalizeSpeechLanguage(preferred);
   }
 
@@ -458,8 +491,10 @@ class OpenClawChatCard extends HTMLElement {
 
   _startVoiceRecognition() {
     this._voiceBackendBlocked = false;
+    const allowBraveWebSpeech =
+      this._config.allow_brave_webspeech || this._allowBraveWebSpeechIntegration;
 
-    if (this._isLikelyBraveBrowser() && !this._config.allow_brave_webspeech) {
+    if (this._isLikelyBraveBrowser() && !allowBraveWebSpeech) {
       this._voiceStatus =
         "Voice input disabled on Brave by default due browser SpeechRecognition network failures. Use Chrome/Edge, or set allow_brave_webspeech: true in card config to force-enable experimental mode.";
       this._render();
@@ -631,9 +666,54 @@ class OpenClawChatCard extends HTMLElement {
     if (!("speechSynthesis" in window)) return;
     // Strip markdown for TTS
     const plain = text.replace(/[*_`#\[\]()]/g, "");
-    const utterance = new SpeechSynthesisUtterance(plain);
-    utterance.lang = this._hass?.language || "en-US";
-    speechSynthesis.speak(utterance);
+    const language = this._getSpeechRecognitionLanguage();
+
+    const speakNow = () => {
+      const utterance = new SpeechSynthesisUtterance(plain);
+      utterance.lang = language;
+
+      const voices = speechSynthesis.getVoices() || [];
+      if (voices.length) {
+        const exactVoice = voices.find(
+          (voice) => String(voice.lang || "").toLowerCase() === language.toLowerCase()
+        );
+        const prefix = language.split("-")[0]?.toLowerCase();
+        const languageVoice =
+          exactVoice ||
+          voices.find((voice) => String(voice.lang || "").toLowerCase().startsWith(`${prefix}-`));
+        if (languageVoice) {
+          utterance.voice = languageVoice;
+        }
+      }
+
+      utterance.onerror = () => {
+        this._voiceStatus = `TTS error for language ${language}`;
+        this._render();
+      };
+
+      try {
+        speechSynthesis.cancel();
+      } catch (e) {
+        // ignore
+      }
+      speechSynthesis.speak(utterance);
+    };
+
+    const loadedVoices = speechSynthesis.getVoices() || [];
+    if (loadedVoices.length) {
+      speakNow();
+      return;
+    }
+
+    const handleVoicesChanged = () => {
+      speechSynthesis.removeEventListener("voiceschanged", handleVoicesChanged);
+      speakNow();
+    };
+    speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged);
+    setTimeout(() => {
+      speechSynthesis.removeEventListener("voiceschanged", handleVoicesChanged);
+      speakNow();
+    }, 800);
   }
 
   // ── File attachments ────────────────────────────────────────────────
