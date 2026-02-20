@@ -60,7 +60,6 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.client = client
         self._last_activity: datetime | None = None
         self._model_cache: dict[str, Any] = {}
-        self._model_poll_counter = 0
         self._consecutive_failures = 0
 
     def _offline_data(self) -> dict[str, Any]:
@@ -81,19 +80,36 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from the OpenClaw gateway.
 
+        The OpenClaw gateway only exposes OpenAI-compatible endpoints.
+        /v1/models is used as both the connectivity probe and the model
+        data source; /api/status and /api/sessions do not exist on the
+        gateway — it returns its SPA home page for unknown routes.
+
         Returns:
             Aggregated data dict for all entities.
         """
         data = self._offline_data()
 
-        # ── Status ──────────────────────────────────────────────────
         try:
-            status_resp = await self.client.async_get_status()
-            data[DATA_STATUS] = status_resp.get("status", "online")
+            models_resp = await self.client.async_get_models()
+            models = models_resp.get("data", [])
+
+            data[DATA_STATUS] = "online"
             data[DATA_CONNECTED] = True
-            data[DATA_GATEWAY_VERSION] = status_resp.get("version")
-            data[DATA_UPTIME] = status_resp.get("uptime")
+            data[DATA_GATEWAY_VERSION] = None  # Not exposed by gateway API
+            data[DATA_UPTIME] = None           # Not exposed by gateway API
+            data[DATA_SESSION_COUNT] = 0       # Sessions API does not exist
+            data[DATA_SESSIONS] = []           # Sessions API does not exist
+            data[DATA_LAST_ACTIVITY] = self._last_activity
             self._consecutive_failures = 0
+
+            if models:
+                current = models[0]
+                self._model_cache = {
+                    DATA_MODEL: current.get("id", "unknown"),
+                    DATA_PROVIDER: current.get("owned_by"),
+                    DATA_CONTEXT_WINDOW: current.get("context_window"),
+                }
 
         except OpenClawAuthError as err:
             _LOGGER.warning("Gateway auth failed during poll: %s", err)
@@ -112,47 +128,8 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return data
 
         except OpenClawApiError as err:
-            _LOGGER.warning("Error fetching gateway status: %s", err)
+            _LOGGER.warning("Error fetching gateway models: %s", err)
             return data
-
-        # ── Sessions ────────────────────────────────────────────────
-        try:
-            sessions_resp = await self.client.async_get_sessions()
-            sessions = sessions_resp.get("sessions", [])
-            data[DATA_SESSION_COUNT] = len(sessions)
-            data[DATA_SESSIONS] = sessions
-
-            if sessions:
-                latest = max(
-                    (s.get("updated_at") or s.get("created_at", "") for s in sessions),
-                    default=None,
-                )
-                if latest:
-                    try:
-                        self._last_activity = datetime.fromisoformat(latest)
-                    except (ValueError, TypeError):
-                        pass
-            data[DATA_LAST_ACTIVITY] = self._last_activity
-
-        except OpenClawApiError as err:
-            _LOGGER.debug("Error fetching sessions: %s", err)
-
-        # ── Models (polled every ~4 intervals ≈ 2 minutes) ──────────
-        self._model_poll_counter += 1
-        if not self._model_cache or self._model_poll_counter >= 4:
-            self._model_poll_counter = 0
-            try:
-                models_resp = await self.client.async_get_models()
-                models = models_resp.get("data", [])
-                if models:
-                    current = models[0]
-                    self._model_cache = {
-                        DATA_MODEL: current.get("id", "unknown"),
-                        DATA_PROVIDER: current.get("owned_by"),
-                        DATA_CONTEXT_WINDOW: current.get("context_window"),
-                    }
-            except OpenClawApiError as err:
-                _LOGGER.debug("Error fetching models: %s", err)
 
         data.update(self._model_cache)
         return data

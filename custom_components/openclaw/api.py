@@ -12,8 +12,6 @@ import aiohttp
 from .const import (
     API_CHAT_COMPLETIONS,
     API_MODELS,
-    API_SESSIONS,
-    API_STATUS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -137,6 +135,14 @@ class OpenClawApiClient:
                     raise OpenClawApiError(
                         f"API error {resp.status}: {text[:200]}"
                     )
+                content_type = resp.content_type or ""
+                if "json" not in content_type:
+                    text = await resp.text()
+                    raise OpenClawApiError(
+                        f"Unexpected response content type '{content_type}' (expected JSON). "
+                        f"The host/port may be wrong or the gateway returned an error page. "
+                        f"Response: {text[:200]}"
+                    )
                 return await resp.json()
 
         except (aiohttp.ClientConnectorError, aiohttp.ClientOSError, asyncio.TimeoutError) as err:
@@ -145,26 +151,6 @@ class OpenClawApiClient:
             ) from err
 
     # ─── Public API methods ────────────────────────────────────────────
-
-    async def async_get_status(self) -> dict[str, Any]:
-        """Get gateway status.
-
-        Returns:
-            Status dict with keys like 'status', 'version', 'uptime'.
-
-        Raises:
-            OpenClawConnectionError: If the gateway is unreachable.
-            OpenClawAuthError: If authentication fails.
-        """
-        return await self._request("GET", API_STATUS)
-
-    async def async_get_sessions(self) -> dict[str, Any]:
-        """Get active sessions list.
-
-        Returns:
-            Dict with 'sessions' list and 'count'.
-        """
-        return await self._request("GET", API_SESSIONS)
 
     async def async_get_models(self) -> dict[str, Any]:
         """Get available models (OpenAI-compatible).
@@ -303,6 +289,9 @@ class OpenClawApiClient:
     async def async_check_connection(self) -> bool:
         """Check if the gateway is reachable and authenticated.
 
+        Uses the /v1/models endpoint as a lightweight probe — the only
+        consistently available GET endpoint on the OpenClaw gateway.
+
         Returns:
             True if connected and authenticated.
 
@@ -311,7 +300,7 @@ class OpenClawApiClient:
                 can distinguish bad tokens from unreachable gateways).
         """
         try:
-            await self.async_get_status()
+            await self.async_get_models()
             return True
         except OpenClawAuthError:
             raise

@@ -53,7 +53,8 @@ ATTR_MODEL = "model"
 ATTR_TIMESTAMP = "timestamp"
 
 # API endpoints
-API_STATUS = "/api/status"
-API_SESSIONS = "/api/sessions"
+# The OpenClaw gateway exposes only the OpenAI-compatible endpoints.
+# /api/status and /api/sessions do not exist — the gateway returns its SPA
+# home page (text/html) for any unrecognised route.
 API_MODELS = "/v1/models"
 API_CHAT_COMPLETIONS = "/v1/chat/completions"
