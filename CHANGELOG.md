@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.31] - 2026-02-20
+
+### Fixed
+- Fixed Assist pipeline crash during intent recognition on some Home Assistant versions:
+  - Replaced `conversation.IntentResponse` / `conversation.IntentResponseErrorCode` usage with `homeassistant.helpers.intent` equivalents in the OpenClaw conversation agent.
+  - Resolves `AttributeError: module 'homeassistant.components.conversation' has no attribute 'IntentResponse'`.
+
 ## [0.1.30] - 2026-02-20
 
 ### Fixed

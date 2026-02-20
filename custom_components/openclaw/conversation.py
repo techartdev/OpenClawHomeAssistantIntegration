@@ -14,6 +14,7 @@ from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers import intent
 
 from .api import OpenClawApiClient, OpenClawApiError
 from .const import (
@@ -180,7 +181,7 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
         )
         coordinator.update_last_activity()
 
-        intent_response = conversation.IntentResponse(language=user_input.language)
+        intent_response = intent.IntentResponse(language=user_input.language)
         intent_response.async_set_speech(full_response)
 
         return conversation.ConversationResult(
@@ -269,9 +270,9 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
         error_message: str,
     ) -> conversation.ConversationResult:
         """Build an error ConversationResult."""
-        intent_response = conversation.IntentResponse(language=user_input.language)
+        intent_response = intent.IntentResponse(language=user_input.language)
         intent_response.async_set_error(
-            conversation.IntentResponseErrorCode.UNKNOWN,
+            intent.IntentResponseErrorCode.UNKNOWN,
             error_message,
         )
         return conversation.ConversationResult(
