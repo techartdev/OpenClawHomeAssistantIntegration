@@ -30,7 +30,6 @@ CONF_CONTEXT_STRATEGY = "context_strategy"
 CONF_ENABLE_TOOL_CALLS = "enable_tool_calls"
 CONF_WAKE_WORD_ENABLED = "wake_word_enabled"
 CONF_WAKE_WORD = "wake_word"
-CONF_ALWAYS_VOICE_MODE = "always_voice_mode"
 CONF_ALLOW_BRAVE_WEBSPEECH = "allow_brave_webspeech"
 CONF_VOICE_PROVIDER = "voice_provider"
 
@@ -40,7 +39,6 @@ DEFAULT_CONTEXT_STRATEGY = "truncate"
 DEFAULT_ENABLE_TOOL_CALLS = False
 DEFAULT_WAKE_WORD_ENABLED = False
 DEFAULT_WAKE_WORD = "hey openclaw"
-DEFAULT_ALWAYS_VOICE_MODE = False
 DEFAULT_ALLOW_BRAVE_WEBSPEECH = False
 DEFAULT_VOICE_PROVIDER = "browser"
 

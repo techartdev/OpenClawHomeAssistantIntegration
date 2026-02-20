@@ -43,7 +43,6 @@
           "enable_tool_calls": "Enable tool calls (execute services)",
           "wake_word_enabled": "Require wake word",
           "wake_word": "Wake word",
-          "always_voice_mode": "Always-on voice mode",
           "allow_brave_webspeech": "Allow Web Speech in Brave (experimental)",
           "voice_provider": "Voice input provider (browser or HA STT)"
         }

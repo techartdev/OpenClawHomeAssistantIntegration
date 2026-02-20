@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.4";
+const CARD_VERSION = "0.3.5";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -62,7 +62,6 @@ class OpenClawChatCard extends HTMLElement {
     this._historySyncRetryTimer = null;
     this._wakeWordEnabled = false;
     this._wakeWord = "hey openclaw";
-    this._alwaysVoiceMode = false;
     this._voiceStatus = "";
     this._voiceRetryTimer = null;
     this._voiceRetryCount = 0;
@@ -123,8 +122,24 @@ class OpenClawChatCard extends HTMLElement {
       this._subscribeToEvents();
       this._syncHistoryFromBackend();
       this._loadIntegrationSettings();
-      this._render();
     }
+    this._render();
+  }
+
+  _getGatewayConnectionState() {
+    const statusEntity = this._hass?.states?.["sensor.openclaw_status"];
+    const binaryEntity = this._hass?.states?.["binary_sensor.openclaw_connected"];
+    const status = String(statusEntity?.state || "").toLowerCase();
+    const connected = String(binaryEntity?.state || "").toLowerCase() === "on";
+
+    if (connected || status === "online") {
+      return { label: "Online", css: "online" };
+    }
+    if (status === "offline" || String(binaryEntity?.state || "").toLowerCase() === "off") {
+      return { label: "Offline", css: "offline" };
+    }
+
+    return { label: "Unknown", css: "unknown" };
   }
 
   getCardSize() {
@@ -321,7 +336,7 @@ class OpenClawChatCard extends HTMLElement {
     }
   }
 
-  async _loadIntegrationSettings() {
+  async _loadIntegrationSettings(includePipeline = true) {
     if (!this._hass) return;
 
     try {
@@ -336,7 +351,6 @@ class OpenClawChatCard extends HTMLElement {
 
       this._wakeWordEnabled = !!result?.wake_word_enabled;
       this._wakeWord = (result?.wake_word || "hey openclaw").toString().trim().toLowerCase();
-      this._alwaysVoiceMode = !!result?.always_voice_mode;
       this._allowBraveWebSpeechIntegration = !!result?.allow_brave_webspeech;
       this._voiceProviderIntegration =
         result?.voice_provider === "assist_stt" ? "assist_stt" : "browser";
@@ -344,7 +358,8 @@ class OpenClawChatCard extends HTMLElement {
         ? this._normalizeSpeechLanguage(result.language)
         : null;
 
-      try {
+      if (includePipeline) {
+        try {
         let pipelineResult;
         if (typeof this._hass.callWS === "function") {
           pipelineResult = await this._hass.callWS({ type: "assist_pipeline/pipeline/list" });
@@ -372,13 +387,9 @@ class OpenClawChatCard extends HTMLElement {
         if (ttsLanguage) {
           this._integrationTtsLanguage = this._normalizeSpeechLanguage(ttsLanguage);
         }
-      } catch (pipelineErr) {
-        console.debug("OpenClaw: assist pipeline language detection skipped:", pipelineErr);
-      }
-
-      if (this._alwaysVoiceMode && !this._isVoiceMode) {
-        this._isVoiceMode = true;
-        this._startVoiceRecognition();
+        } catch (pipelineErr) {
+          console.debug("OpenClaw: assist pipeline language detection skipped:", pipelineErr);
+        }
       }
       this._render();
     } catch (err) {
@@ -1162,7 +1173,8 @@ class OpenClawChatCard extends HTMLElement {
     }, delayMs);
   }
 
-  _toggleVoiceMode() {
+  async _toggleVoiceMode() {
+    await this._loadIntegrationSettings(false);
     this._isVoiceMode = !this._isVoiceMode;
     if (this._isVoiceMode) {
       this._startVoiceRecognition();
@@ -1303,6 +1315,7 @@ class OpenClawChatCard extends HTMLElement {
       .join("");
 
     const voiceActive = this._recognition !== null;
+    const gatewayState = this._getGatewayConnectionState();
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -1331,6 +1344,24 @@ class OpenClawChatCard extends HTMLElement {
           font-size: 16px;
           font-weight: 500;
           color: var(--oc-text);
+        }
+        .header-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .gateway-status {
+          font-size: 11px;
+          border: 1px solid var(--oc-border);
+          border-radius: 999px;
+          padding: 2px 8px;
+          color: var(--oc-text-secondary);
+        }
+        .gateway-status.online {
+          color: #10b981;
+        }
+        .gateway-status.offline {
+          color: #ef4444;
         }
         .header-actions {
           display: flex;
@@ -1503,7 +1534,10 @@ class OpenClawChatCard extends HTMLElement {
 
       <ha-card>
         <div class="header">
-          <h3>${this._escapeHtml(config.title)}</h3>
+          <div class="header-title">
+            <h3>${this._escapeHtml(config.title)}</h3>
+            <span class="gateway-status ${gatewayState.css}">Gateway: ${gatewayState.label}</span>
+          </div>
           <div class="header-actions">
             ${
               config.show_voice_button

@@ -28,15 +28,17 @@ OpenClaw is a Home Assistant custom integration that connects your HA instance t
   - `openclaw_message_received`
   - `openclaw_tool_invoked`
 - **Sensors / status entities** for model and connection state
+  - Includes tool telemetry sensors (`Last Tool`, `Last Tool Status`, `Last Tool Duration`, `Last Tool Invoked`)
 
 ---
 
 ## Requirements
 
-- Home Assistant with Supervisor support for addon discovery
+- Home Assistant Core `2025.1.0+` (declared minimum)
+- Supervisor is optional (used for auto-discovery)
 - OpenClaw Assistant addon installed and running
 
-The integration auto-detects the addon. You do not need to manually set an API base URL.
+The integration can auto-detect the addon when Supervisor is available. You can always configure host/port/token manually.
 
 ---
 
@@ -72,6 +74,8 @@ The integration auto-detects the addon. You do not need to manually set an API b
 ## Dashboard card
 
 The card is registered automatically by the integration.
+
+The card header shows live gateway state (`Online` / `Offline`) using existing OpenClaw status entities.
 
 ```yaml
 type: custom:openclaw-chat-card
@@ -125,7 +129,6 @@ When enabled, OpenClaw tool-call responses can execute Home Assistant services.
 
 - **Wake word enabled**
 - **Wake word** (default: `hey openclaw`)
-- **Always voice mode** (continuous listening while card is open)
 - **Voice input provider** (`browser` or `assist_stt`)
 
 ### Voice provider usage
@@ -138,7 +141,7 @@ When enabled, OpenClaw tool-call responses can execute Home Assistant services.
 - **`assist_stt`**
   - Uses Home Assistant STT provider via `/api/stt/<provider>`.
   - Intended for manual mic input (press mic, speak, auto-stop, transcribe, send).
-  - Continuous voice mode is not used in this provider.
+  - If continuous Voice Mode is enabled while this provider is selected, the card uses browser speech for continuous listening.
 
 For `assist_stt`, make sure an STT engine is configured in **Settings → Voice assistants**.
 
@@ -290,6 +293,11 @@ action:
   - `assist_stt` for Home Assistant STT transcription
 - For `browser`: open browser console for `OpenClaw: Speech recognition error`; repeated `network` usually means browser speech backend failure
 - For `assist_stt`: check network calls to `/api/stt/<provider>` and verify Home Assistant Voice/STT provider is configured
+
+### Tool sensors show `Unknown`
+
+- `Last Tool*` sensors stay `Unknown` until at least one `openclaw.invoke_tool` service call has executed.
+- `Session Count` remains `0` if gateway policy blocks `sessions_list` for `/tools/invoke`.
 
 ### Responses do not appear after sending
 

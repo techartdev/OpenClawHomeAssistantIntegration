@@ -2,6 +2,16 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.41] - 2026-02-20
+
+### Fixed
+- Fixed voice-mode option sync so wake-word enabled/disabled changes are reloaded before toggling voice mode.
+- Removed legacy always-on voice mode behavior that could force sticky voice-mode state.
+- Added live gateway connection badge to the chat card header using existing OpenClaw status entities.
+
+### Changed
+- Removed "Always-on voice mode" option from integration options UI and translations.
+
 ## [0.1.40] - 2026-02-20
 
 ### Added

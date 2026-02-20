@@ -44,7 +44,6 @@ from .const import (
     CONF_INCLUDE_EXPOSED_CONTEXT,
     CONF_WAKE_WORD,
     CONF_WAKE_WORD_ENABLED,
-    CONF_ALWAYS_VOICE_MODE,
     CONF_ALLOW_BRAVE_WEBSPEECH,
     CONF_VOICE_PROVIDER,
     CONTEXT_STRATEGY_CLEAR,
@@ -57,7 +56,6 @@ from .const import (
     DEFAULT_INCLUDE_EXPOSED_CONTEXT,
     DEFAULT_WAKE_WORD,
     DEFAULT_WAKE_WORD_ENABLED,
-    DEFAULT_ALWAYS_VOICE_MODE,
     DEFAULT_ALLOW_BRAVE_WEBSPEECH,
     DEFAULT_VOICE_PROVIDER,
     DOMAIN,
@@ -462,13 +460,6 @@ class OpenClawOptionsFlow(OptionsFlow):
                             DEFAULT_WAKE_WORD,
                         ),
                     ): str,
-                    vol.Optional(
-                        CONF_ALWAYS_VOICE_MODE,
-                        default=options.get(
-                            CONF_ALWAYS_VOICE_MODE,
-                            DEFAULT_ALWAYS_VOICE_MODE,
-                        ),
-                    ): bool,
                     vol.Optional(
                         CONF_ALLOW_BRAVE_WEBSPEECH,
                         default=options.get(
