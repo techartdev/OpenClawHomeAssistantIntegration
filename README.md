@@ -1,5 +1,6 @@
 # OpenClaw Integration for Home Assistant
 
+## [Join our Discord Server!](https://discord.gg/Nx4H3XmY)
 ![OpenClaw Assistant Integration](https://github.com/techartdev/OpenClawHomeAssistantIntegration/blob/main/pic.png?raw=true)
 
 OpenClaw is a Home Assistant custom integration that connects your HA instance to the OpenClaw assistant backend and provides:
@@ -254,6 +255,16 @@ action:
 
 ---
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=techartdev/OpenClawHomeAssistantIntegration&type=date&legend=top-left)](https://www.star-history.com/#techartdev/OpenClawHomeAssistantIntegration&type=date&legend=top-left)
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Support / Donations
+
+If you find this useful and you want to bring me a coffee to make more nice stuff, or support the project, use the link below:
+- https://revolut.me/vanyo6dhw
+
