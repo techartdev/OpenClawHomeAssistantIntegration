@@ -125,6 +125,20 @@ When enabled, OpenClaw tool-call responses can execute Home Assistant services.
 - **Always voice mode** (continuous listening while card is open)
 - **Voice input provider** (`browser` or `assist_stt`)
 
+### Voice provider usage
+
+- **`browser`**
+  - Uses browser Web Speech recognition.
+  - Supports manual mic and continuous voice mode (wake word flow).
+  - Best when browser STT is stable in your environment.
+
+- **`assist_stt`**
+  - Uses Home Assistant STT provider via `/api/stt/<provider>`.
+  - Intended for manual mic input (press mic, speak, auto-stop, transcribe, send).
+  - Continuous voice mode is not used in this provider.
+
+For `assist_stt`, make sure an STT engine is configured in **Settings → Voice assistants**.
+
 ---
 
 ## Browser voice note (important)
@@ -215,8 +229,11 @@ action:
 ### Voice button is active but no transcript is sent
 
 - Check browser mic permission for your HA URL
-- Open browser console for `OpenClaw: Speech recognition error`
-- If you see repeated `network`, this is usually browser speech backend failure
+- Confirm **Voice input provider** setting in integration options:
+  - `browser` for Web Speech recognition
+  - `assist_stt` for Home Assistant STT transcription
+- For `browser`: open browser console for `OpenClaw: Speech recognition error`; repeated `network` usually means browser speech backend failure
+- For `assist_stt`: check network calls to `/api/stt/<provider>` and verify Home Assistant Voice/STT provider is configured
 
 ### Responses do not appear after sending
 

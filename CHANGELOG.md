@@ -2,6 +2,22 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.34] - 2026-02-20
+
+### Changed
+- Assist STT microphone capture now uses `AudioWorkletNode` when available, with automatic fallback to `ScriptProcessorNode` for older browsers.
+- Reduced browser deprecation noise by avoiding `ScriptProcessorNode` on modern browser engines.
+
+### Documentation
+- Expanded README voice documentation with practical guidance for `voice_provider` (`browser` vs `assist_stt`) and provider-specific troubleshooting.
+
+## [0.1.33] - 2026-02-20
+
+### Fixed
+- Reduced `415 Unsupported Media Type` failures for `assist_stt` by fetching STT provider capabilities and negotiating metadata before upload.
+- Assist STT now auto-matches provider-supported language values (for example `bg` vs `bg-BG`) when submitting transcription audio.
+- Assist STT now aligns upload metadata sample rate/channels with provider-supported values when available.
+
 ## [0.1.32] - 2026-02-20
 
 ### Added

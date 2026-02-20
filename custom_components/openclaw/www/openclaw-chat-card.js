@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.0";
+const CARD_VERSION = "0.3.2";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -80,6 +80,7 @@ class OpenClawChatCard extends HTMLElement {
     this._assistAudioStream = null;
     this._assistAudioContext = null;
     this._assistAudioSource = null;
+    this._assistAudioWorkletNode = null;
     this._assistAudioProcessor = null;
     this._assistAudioSilenceGain = null;
     this._assistAudioChunks = [];
@@ -600,17 +601,68 @@ class OpenClawChatCard extends HTMLElement {
       this._assistInputSampleRate = this._assistAudioContext.sampleRate || 16000;
 
       this._assistAudioSource = this._assistAudioContext.createMediaStreamSource(this._assistAudioStream);
-      this._assistAudioProcessor = this._assistAudioContext.createScriptProcessor(4096, 1, 1);
       this._assistAudioSilenceGain = this._assistAudioContext.createGain();
       this._assistAudioSilenceGain.gain.value = 0;
 
-      this._assistAudioProcessor.onaudioprocess = (event) => {
-        const input = event.inputBuffer.getChannelData(0);
-        this._assistAudioChunks.push(new Float32Array(input));
-      };
+      let usingWorklet = false;
+      if (typeof AudioWorkletNode !== "undefined" && this._assistAudioContext.audioWorklet?.addModule) {
+        try {
+          const workletSource = `
+            class OpenClawAssistCaptureProcessor extends AudioWorkletProcessor {
+              process(inputs) {
+                const input = inputs[0];
+                const channel = input && input[0];
+                if (channel && channel.length) {
+                  this.port.postMessage(new Float32Array(channel));
+                }
+                return true;
+              }
+            }
+            registerProcessor("openclaw-assist-capture", OpenClawAssistCaptureProcessor);
+          `;
+          const blob = new Blob([workletSource], { type: "application/javascript" });
+          const moduleUrl = URL.createObjectURL(blob);
+          try {
+            await this._assistAudioContext.audioWorklet.addModule(moduleUrl);
+          } finally {
+            URL.revokeObjectURL(moduleUrl);
+          }
 
-      this._assistAudioSource.connect(this._assistAudioProcessor);
-      this._assistAudioProcessor.connect(this._assistAudioSilenceGain);
+          this._assistAudioWorkletNode = new AudioWorkletNode(
+            this._assistAudioContext,
+            "openclaw-assist-capture",
+            {
+              numberOfInputs: 1,
+              numberOfOutputs: 1,
+              channelCount: 1,
+            }
+          );
+          this._assistAudioWorkletNode.port.onmessage = (event) => {
+            const chunk = event.data;
+            if (chunk && chunk.length) {
+              this._assistAudioChunks.push(new Float32Array(chunk));
+            }
+          };
+
+          this._assistAudioSource.connect(this._assistAudioWorkletNode);
+          this._assistAudioWorkletNode.connect(this._assistAudioSilenceGain);
+          usingWorklet = true;
+        } catch (workletErr) {
+          console.debug("OpenClaw: AudioWorklet capture unavailable, falling back", workletErr);
+          this._assistAudioWorkletNode = null;
+        }
+      }
+
+      if (!usingWorklet) {
+        this._assistAudioProcessor = this._assistAudioContext.createScriptProcessor(4096, 1, 1);
+        this._assistAudioProcessor.onaudioprocess = (event) => {
+          const input = event.inputBuffer.getChannelData(0);
+          this._assistAudioChunks.push(new Float32Array(input));
+        };
+        this._assistAudioSource.connect(this._assistAudioProcessor);
+        this._assistAudioProcessor.connect(this._assistAudioSilenceGain);
+      }
+
       this._assistAudioSilenceGain.connect(this._assistAudioContext.destination);
 
       this._assistRecordingActive = true;
@@ -643,6 +695,11 @@ class OpenClawChatCard extends HTMLElement {
       this._assistAudioProcessor.disconnect();
       this._assistAudioProcessor.onaudioprocess = null;
       this._assistAudioProcessor = null;
+    }
+    if (this._assistAudioWorkletNode) {
+      this._assistAudioWorkletNode.disconnect();
+      this._assistAudioWorkletNode.port.onmessage = null;
+      this._assistAudioWorkletNode = null;
     }
     if (this._assistAudioSource) {
       this._assistAudioSource.disconnect();
@@ -687,10 +744,36 @@ class OpenClawChatCard extends HTMLElement {
 
     try {
       const language = this._getSpeechRecognitionLanguage();
-      const wavBuffer = this._encodeWavFromChunks(this._assistAudioChunks, this._assistInputSampleRate);
+      const token = this._hass?.auth?.data?.access_token;
+
+      let providerInfo = null;
+      try {
+        const providerResponse = await fetch(
+          `/api/stt/${encodeURIComponent(this._preferredAssistSttEngine)}`,
+          {
+            method: "GET",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          }
+        );
+        if (providerResponse.ok) {
+          providerInfo = await providerResponse.json();
+        }
+      } catch (providerErr) {
+        console.debug("OpenClaw: Assist STT provider info fetch failed:", providerErr);
+      }
+
+      const negotiatedLanguage = this._pickAssistSttLanguage(language, providerInfo?.languages);
+      const negotiatedSampleRate = this._pickAssistSttSampleRate(providerInfo?.sample_rates);
+      const negotiatedChannel = this._pickAssistSttChannel(providerInfo?.channels);
+
+      const wavBuffer = this._encodeWavFromChunks(
+        this._assistAudioChunks,
+        this._assistInputSampleRate,
+        negotiatedSampleRate,
+        negotiatedChannel
+      );
       this._assistAudioChunks = [];
 
-      const token = this._hass?.auth?.data?.access_token;
       const response = await fetch(
         `/api/stt/${encodeURIComponent(this._preferredAssistSttEngine)}`,
         {
@@ -698,7 +781,7 @@ class OpenClawChatCard extends HTMLElement {
           headers: {
             "Content-Type": "audio/wav",
             "X-Speech-Content":
-              `format=wav; codec=pcm; sample_rate=16000; bit_rate=16; channel=1; language=${language}`,
+              `format=wav; codec=pcm; sample_rate=${negotiatedSampleRate}; bit_rate=16; channel=${negotiatedChannel}; language=${negotiatedLanguage}`,
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: new Blob([wavBuffer], { type: "audio/wav" }),
@@ -755,7 +838,64 @@ class OpenClawChatCard extends HTMLElement {
     return outputBuffer;
   }
 
-  _encodeWavFromChunks(chunks, inputSampleRate) {
+  _pickAssistSttLanguage(preferredLanguage, supportedLanguages) {
+    if (!Array.isArray(supportedLanguages) || !supportedLanguages.length) {
+      return preferredLanguage;
+    }
+
+    const preferred = String(preferredLanguage || "").toLowerCase();
+    const supported = supportedLanguages.map((value) => String(value || "")).filter(Boolean);
+
+    const exact = supported.find((value) => value.toLowerCase() === preferred);
+    if (exact) return exact;
+
+    const preferredBase = preferred.split("-")[0];
+    if (preferredBase) {
+      const baseExact = supported.find((value) => value.toLowerCase() === preferredBase);
+      if (baseExact) return baseExact;
+
+      const prefix = supported.find((value) => value.toLowerCase().startsWith(`${preferredBase}-`));
+      if (prefix) return prefix;
+    }
+
+    return supported[0];
+  }
+
+  _pickAssistSttSampleRate(supportedSampleRates) {
+    if (!Array.isArray(supportedSampleRates) || !supportedSampleRates.length) {
+      return 16000;
+    }
+
+    const numericRates = supportedSampleRates
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (!numericRates.length) return 16000;
+    if (numericRates.includes(16000)) return 16000;
+    return numericRates[0];
+  }
+
+  _pickAssistSttChannel(supportedChannels) {
+    if (!Array.isArray(supportedChannels) || !supportedChannels.length) {
+      return 1;
+    }
+
+    const asNumbers = supportedChannels
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (asNumbers.length) {
+      if (asNumbers.includes(1)) return 1;
+      return asNumbers[0];
+    }
+
+    const normalized = supportedChannels.map((value) => String(value).toLowerCase());
+    if (normalized.includes("channel_mono")) return 1;
+    if (normalized.includes("channel_stereo")) return 2;
+
+    return 1;
+  }
+
+  _encodeWavFromChunks(chunks, inputSampleRate, outputSampleRate = 16000, channels = 1) {
     let totalLength = 0;
     for (const chunk of chunks) {
       totalLength += chunk.length;
@@ -768,8 +908,13 @@ class OpenClawChatCard extends HTMLElement {
       offset += chunk.length;
     }
 
-    const downsampled = this._downsampleBuffer(merged, inputSampleRate, 16000);
-    const buffer = new ArrayBuffer(44 + downsampled.length * 2);
+    const downsampled = this._downsampleBuffer(merged, inputSampleRate, outputSampleRate);
+    const frameCount = downsampled.length;
+    const sampleCount = frameCount * channels;
+    const bytesPerSample = 2;
+    const blockAlign = channels * bytesPerSample;
+    const byteRate = outputSampleRate * blockAlign;
+    const buffer = new ArrayBuffer(44 + sampleCount * bytesPerSample);
     const view = new DataView(buffer);
 
     const writeString = (dataView, start, value) => {
@@ -779,24 +924,27 @@ class OpenClawChatCard extends HTMLElement {
     };
 
     writeString(view, 0, "RIFF");
-    view.setUint32(4, 36 + downsampled.length * 2, true);
+    view.setUint32(4, 36 + sampleCount * bytesPerSample, true);
     writeString(view, 8, "WAVE");
     writeString(view, 12, "fmt ");
     view.setUint32(16, 16, true);
     view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, 16000, true);
-    view.setUint32(28, 16000 * 2, true);
-    view.setUint16(32, 2, true);
+    view.setUint16(22, channels, true);
+    view.setUint32(24, outputSampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
     view.setUint16(34, 16, true);
     writeString(view, 36, "data");
-    view.setUint32(40, downsampled.length * 2, true);
+    view.setUint32(40, sampleCount * bytesPerSample, true);
 
     let wavOffset = 44;
-    for (let idx = 0; idx < downsampled.length; idx += 1) {
+    for (let idx = 0; idx < frameCount; idx += 1) {
       const sample = Math.max(-1, Math.min(1, downsampled[idx]));
-      view.setInt16(wavOffset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-      wavOffset += 2;
+      const pcm = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
+        view.setInt16(wavOffset, pcm, true);
+        wavOffset += 2;
+      }
     }
 
     return buffer;
@@ -817,7 +965,6 @@ class OpenClawChatCard extends HTMLElement {
 
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
       console.warn("OpenClaw: Speech recognition not supported in this browser");
-      this._voiceStatus = "Speech recognition not supported by this browser.";
       this._render();
       return;
     }
@@ -825,7 +972,6 @@ class OpenClawChatCard extends HTMLElement {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     this._recognition = new SpeechRecognition();
     this._recognition.continuous = this._isVoiceMode;
-    this._recognition.interimResults = true;
     this._recognition.lang = this._getSpeechRecognitionLanguage();
     this._voiceStatus = this._isVoiceMode
       ? `Listening (${this._recognition.lang}, wake word: ${this._wakeWord || "hey openclaw"})`
