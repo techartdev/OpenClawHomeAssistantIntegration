@@ -836,16 +836,23 @@ class OpenClawChatCardEditor extends HTMLElement {
 
 // ── Card registration ───────────────────────────────────────────────────────
 
-customElements.define("openclaw-chat-card-editor", OpenClawChatCardEditor);
-customElements.define("openclaw-chat-card", OpenClawChatCard);
+if (!customElements.get("openclaw-chat-card-editor")) {
+  customElements.define("openclaw-chat-card-editor", OpenClawChatCardEditor);
+}
+
+if (!customElements.get("openclaw-chat-card")) {
+  customElements.define("openclaw-chat-card", OpenClawChatCard);
+}
 
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "openclaw-chat-card",
-  name: "OpenClaw Chat",
-  description: "Chat interface for OpenClaw AI Assistant with streaming, voice, and file support.",
-  preview: true,
-});
+if (!window.customCards.some((card) => card?.type === "openclaw-chat-card")) {
+  window.customCards.push({
+    type: "openclaw-chat-card",
+    name: "OpenClaw Chat",
+    description: "Chat interface for OpenClaw AI Assistant with streaming, voice, and file support.",
+    preview: true,
+  });
+}
 
 console.info(
   `%c OPENCLAW-CHAT-CARD %c v${CARD_VERSION} `,

@@ -2,6 +2,20 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.11] - 2026-02-20
+
+### Fixed
+- Chat card no longer waits forever when the gateway returns a non-`choices[0].message.content` response shape.
+- `openclaw.send_message` now extracts assistant text from multiple OpenAI-compatible formats (`choices`, `output_text`, `response`, `message`, `content`, `answer`).
+- Added fallback event emission on API errors so the frontend always receives a response and exits the typing state.
+
+## [0.1.10] - 2026-02-20
+
+### Fixed
+- Made custom card registration idempotent (`customElements.get(...)` guards) to prevent duplicate-load exceptions that can block card discovery.
+- Prevented duplicate `window.customCards` entries for `openclaw-chat-card`.
+- Synced registration hardening in both packaged and root `www/` card scripts.
+
 ## [0.1.9] - 2026-02-20
 
 ### Fixed

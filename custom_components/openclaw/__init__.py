@@ -318,26 +318,38 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 session_id=session_id,
             )
 
-            choices = response.get("choices", [])
-            if choices:
-                assistant_message = (
-                    choices[0].get("message", {}).get("content", "")
-                )
-                model_used = response.get("model", "unknown")
+            assistant_message = _extract_assistant_message(response)
+            model_used = response.get("model", "unknown")
 
-                hass.bus.async_fire(
-                    EVENT_MESSAGE_RECEIVED,
-                    {
-                        ATTR_MESSAGE: assistant_message,
-                        ATTR_SESSION_ID: session_id,
-                        ATTR_MODEL: model_used,
-                        ATTR_TIMESTAMP: datetime.now(timezone.utc).isoformat(),
-                    },
+            if not assistant_message:
+                assistant_message = "Response received, but no readable message content was found."
+                _LOGGER.warning(
+                    "OpenClaw response had no parseable assistant message. Keys: %s",
+                    list(response.keys()),
                 )
-                coordinator.update_last_activity()
+
+            hass.bus.async_fire(
+                EVENT_MESSAGE_RECEIVED,
+                {
+                    ATTR_MESSAGE: assistant_message,
+                    ATTR_SESSION_ID: session_id,
+                    ATTR_MODEL: model_used,
+                    ATTR_TIMESTAMP: datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            coordinator.update_last_activity()
 
         except OpenClawApiError as err:
             _LOGGER.error("Failed to send message to OpenClaw: %s", err)
+            hass.bus.async_fire(
+                EVENT_MESSAGE_RECEIVED,
+                {
+                    ATTR_MESSAGE: f"OpenClaw error: {err}",
+                    ATTR_SESSION_ID: session_id,
+                    ATTR_MODEL: "unknown",
+                    ATTR_TIMESTAMP: datetime.now(timezone.utc).isoformat(),
+                },
+            )
 
     async def handle_clear_history(call: ServiceCall) -> None:
         """Handle the openclaw.clear_history service call."""
@@ -365,4 +377,50 @@ def _get_first_entry_data(hass: HomeAssistant) -> dict[str, Any] | None:
     for entry_id, entry_data in domain_data.items():
         if isinstance(entry_data, dict) and "client" in entry_data:
             return entry_data
+    return None
+
+
+def _coerce_text(value: Any) -> str | None:
+    """Convert known message content shapes to plain text."""
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+
+    if isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                if item.strip():
+                    parts.append(item.strip())
+                continue
+            if isinstance(item, dict):
+                text_part = item.get("text") or item.get("content")
+                if isinstance(text_part, str) and text_part.strip():
+                    parts.append(text_part.strip())
+        if parts:
+            return "\n".join(parts)
+
+    return None
+
+
+def _extract_assistant_message(response: dict[str, Any]) -> str | None:
+    """Extract assistant text from multiple OpenAI-compatible response shapes."""
+    choices = response.get("choices")
+    if isinstance(choices, list) and choices:
+        first = choices[0]
+        if isinstance(first, dict):
+            message = first.get("message")
+            if isinstance(message, dict):
+                extracted = _coerce_text(message.get("content"))
+                if extracted:
+                    return extracted
+            extracted = _coerce_text(first.get("text"))
+            if extracted:
+                return extracted
+
+    for key in ("output_text", "response", "message", "content", "answer"):
+        extracted = _coerce_text(response.get(key))
+        if extracted:
+            return extracted
+
     return None
