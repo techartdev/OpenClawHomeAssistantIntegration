@@ -42,11 +42,16 @@ The integration auto-detects the addon. You do not need to manually set an API b
 ### Option A: HACS (recommended)
 
 1. Open **HACS → Integrations**
-2. Select **Explore & Download Repositories**
-3. Search for **OpenClaw** and install
-4. Restart Home Assistant
-5. Open **Settings → Devices & Services → Add Integration**
-6. Add **OpenClaw**
+2. Click the **3 dots (⋮)** menu in the top-right
+3. Select **Custom repositories**
+4. Add repository URL: `https://github.com/techartdev/OpenClawHomeAssistantIntegration`
+5. Category: **Integration**
+6. Click **Add**
+7. Go back to **Explore & Download Repositories**
+8. Search for **OpenClaw** and install
+9. Restart Home Assistant
+10. Open **Settings → Devices & Services → Add Integration**
+11. Add **OpenClaw**
 
 ### Option B: Manual
 
