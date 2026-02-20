@@ -35,7 +35,8 @@ The integration will auto-detect it — no manual configuration needed.
 
 ## Chat Card
 
-Add the card to any dashboard:
+The chat card is registered automatically when the integration loads — no
+manual resource configuration needed. Just add it to any dashboard:
 
 ```yaml
 type: custom:openclaw-chat-card

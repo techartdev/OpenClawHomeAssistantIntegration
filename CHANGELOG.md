@@ -2,6 +2,26 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.5] - 2026-02-20
+
+### Added
+- **Automatic Lovelace resource registration** — the chat card JS is now served
+  directly from inside the integration package (`custom_components/openclaw/www/`)
+  via a registered static HTTP path at `/openclaw/openclaw-chat-card.js`. The
+  integration also adds it to Lovelace's resource store automatically on first
+  setup. No manual "Add resource" step is required.
+- `async_setup()` registered so the static path is available before any config
+  entry setup runs.
+- `lovelace` added to `after_dependencies` so Lovelace is ready when we attempt
+  to register the resource.
+
+### Changed
+- `openclaw-chat-card.js` is now shipped inside `custom_components/openclaw/www/`
+  (in addition to the top-level `www/` for backward compatibility with HACS installs
+  that copy files to `config/www/`).
+- If programmatic Lovelace registration fails (e.g. Lovelace not loaded), a clear
+  warning with manual fallback instructions is logged instead of silently doing nothing.
+
 ## [0.1.4] - 2026-02-20
 
 ### Fixed

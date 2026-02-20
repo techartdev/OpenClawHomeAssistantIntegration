@@ -40,7 +40,24 @@ from .coordinator import OpenClawCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+# Path to the chat card JS inside the integration package (custom_components/openclaw/www/)
+_CARD_FILENAME = "openclaw-chat-card.js"
+_CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
+# URL at which the card JS will be served (registered via register_static_path)
+_CARD_URL = f"/openclaw/{_CARD_FILENAME}"
+
 type OpenClawConfigEntry = ConfigEntry
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Global integration setup — runs once before any config entries.
+
+    Registers the static HTTP path for the chat card so the JS file is served
+    directly from inside the integration package, regardless of whether the
+    user installed via HACS or manually.
+    """
+    _async_register_static_path(hass)
+    return True
 
 # Service call schemas
 SEND_MESSAGE_SCHEMA = vol.Schema(
@@ -56,9 +73,6 @@ CLEAR_HISTORY_SCHEMA = vol.Schema(
         vol.Optional(ATTR_SESSION_ID): cv.string,
     }
 )
-
-# Path to the chat card JS inside the integration
-_CARD_FILENAME = "openclaw-chat-card.js"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: OpenClawConfigEntry) -> bool:
@@ -164,31 +178,90 @@ def _async_setup_token_refresh(
 # ── Frontend registration ─────────────────────────────────────────────────────
 
 @callback
-def _async_register_frontend(hass: HomeAssistant) -> None:
-    """Register the Lovelace custom card resource.
+def _async_register_static_path(hass: HomeAssistant) -> None:
+    """Register the integration's www/ folder as a static HTTP path.
 
-    Attempts to register as a Lovelace module resource so the card
-    is available without manual YAML edits. Falls back to a log hint
-    if programmatic registration isn't possible.
+    After this the card JS is always available at /openclaw/openclaw-chat-card.js
+    regardless of how the integration was installed (HACS or manual).
+    """
+    static_key = f"{DOMAIN}_static_registered"
+    if hass.data.get(static_key):
+        return
+    hass.data[static_key] = True
+
+    if not _CARD_PATH.exists():
+        _LOGGER.warning(
+            "Chat card JS not found at %s — frontend resource will not be available",
+            _CARD_PATH,
+        )
+        return
+
+    hass.http.register_static_path(
+        f"/openclaw/{_CARD_FILENAME}",
+        str(_CARD_PATH),
+        cache_headers=True,
+    )
+    _LOGGER.debug("Registered static path: /openclaw/%s", _CARD_FILENAME)
+
+
+@callback
+def _async_register_frontend(hass: HomeAssistant) -> None:
+    """Register the Lovelace custom card resource (called once per setup).
+
+    Adds the card URL to Lovelace's resource list so it loads on every
+    dashboard automatically. No manual step required.
     """
     frontend_key = f"{DOMAIN}_frontend_registered"
     if hass.data.get(frontend_key):
         return
     hass.data[frontend_key] = True
 
-    # The card JS is distributed in www/ alongside the integration.
-    # Users install via HACS which symlinks it into config/www/community/openclaw/
-    # or manually copy to config/www/.
-    # We register the resource URL so it auto-loads.
-    url = f"/local/community/openclaw/{_CARD_FILENAME}"
+    # Ensure static path is registered (may have been missed if async_setup
+    # didn't run, e.g. during a config entry reload).
+    _async_register_static_path(hass)
 
-    # Static path registration is handled by HACS for HACS installs,
-    # or manually by the user. We just log the expected URL.
-    _LOGGER.info(
-        "OpenClaw chat card: add as a Lovelace resource at '%s' "
-        "(type: JavaScript Module). HACS does this automatically.",
-        url,
-    )
+    hass.async_create_task(_async_add_lovelace_resource(hass, _CARD_URL))
+
+
+async def _async_add_lovelace_resource(hass: HomeAssistant, url: str) -> None:
+    """Add the card URL to Lovelace's resource store if not already present."""
+    # Lovelace stores resources in hass.data["lovelace"]["resources"].
+    # It is a ResourceStorageCollection with:
+    #   .async_items()          → list of {"id", "res_type", "url"} dicts
+    #   .async_create_item(data) → persists a new resource
+    lovelace_data = hass.data.get("lovelace")
+    if not lovelace_data:
+        _LOGGER.debug(
+            "Lovelace not loaded; resource '%s' must be added manually if needed",
+            url,
+        )
+        return
+
+    resource_collection = lovelace_data.get("resources")
+    if resource_collection is None:
+        _LOGGER.debug("Lovelace resource store not available")
+        return
+
+    try:
+        existing_urls = {item["url"] for item in resource_collection.async_items()}
+        if url in existing_urls:
+            _LOGGER.debug("Lovelace resource already registered: %s", url)
+            return
+
+        await resource_collection.async_create_item(
+            {"res_type": "module", "url": url}
+        )
+        _LOGGER.info(
+            "Auto-registered Lovelace resource: %s — the chat card is ready to use.",
+            url,
+        )
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning(
+            "Could not auto-register Lovelace resource '%s': %s. "
+            "Add it manually: Settings → Dashboards → Resources.",
+            url,
+            err,
+        )
 
 
 # ── Service registration ──────────────────────────────────────────────────────
