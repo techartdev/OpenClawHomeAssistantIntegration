@@ -2,6 +2,11 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.48] - 2026-02-21
+
+### Fixed
+- Improved chat-card gateway header status detection to handle suffixed entity IDs (for example `_2`) and common connected/offline state variants.
+
 ## [0.1.47] - 2026-02-21
 
 ### Fixed

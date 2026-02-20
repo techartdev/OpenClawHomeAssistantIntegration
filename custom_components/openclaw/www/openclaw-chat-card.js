@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.6";
+const CARD_VERSION = "0.3.7";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -75,6 +75,8 @@ class OpenClawChatCard extends HTMLElement {
     this._voiceProviderIntegration = "browser";
     this._preferredAssistSttEngine = null;
     this._preferredAssistTtsEngine = null;
+    this._assistTtsEngines = [];
+    this._lastHaTtsAttempt = null;
     this._voiceBackendBlocked = false;
     this._voiceStopRequested = false;
     this._assistRecordingActive = false;
@@ -129,15 +131,34 @@ class OpenClawChatCard extends HTMLElement {
   }
 
   _getGatewayConnectionState() {
-    const statusEntity = this._hass?.states?.["sensor.openclaw_status"];
-    const binaryEntity = this._hass?.states?.["binary_sensor.openclaw_connected"];
-    const status = String(statusEntity?.state || "").toLowerCase();
-    const connected = String(binaryEntity?.state || "").toLowerCase() === "on";
+    const states = this._hass?.states || {};
+    const stateEntries = Object.entries(states);
 
-    if (connected || status === "online") {
+    const exactStatus = states["sensor.openclaw_status"];
+    const exactConnected = states["binary_sensor.openclaw_connected"];
+
+    const statusEntity =
+      exactStatus ||
+      stateEntries.find(([entityId]) => entityId.startsWith("sensor.openclaw_status"))?.[1] ||
+      null;
+
+    const binaryEntity =
+      exactConnected ||
+      stateEntries.find(([entityId]) => entityId.startsWith("binary_sensor.openclaw_connected"))?.[1] ||
+      null;
+
+    const status = String(statusEntity?.state || "").toLowerCase();
+    const connectedState = String(binaryEntity?.state || "").toLowerCase();
+
+    const connected = ["on", "connected", "online", "true", "1"].includes(connectedState);
+    const disconnected = ["off", "disconnected", "offline", "false", "0"].includes(
+      connectedState
+    );
+
+    if (connected || ["online", "connected"].includes(status)) {
       return { label: "Online", css: "online" };
     }
-    if (status === "offline" || String(binaryEntity?.state || "").toLowerCase() === "off") {
+    if (disconnected || ["offline", "disconnected"].includes(status)) {
       return { label: "Offline", css: "offline" };
     }
 
@@ -379,10 +400,15 @@ class OpenClawChatCard extends HTMLElement {
         const pipelines = Array.isArray(pipelineResult?.pipelines)
           ? pipelineResult.pipelines
           : [];
+        const discoveredTtsEngines = pipelines
+          .map((pipeline) => pipeline?.tts_engine)
+          .filter((engine) => typeof engine === "string" && engine.trim().length > 0)
+          .map((engine) => engine.trim());
+        this._assistTtsEngines = [...new Set(discoveredTtsEngines)];
         const preferredPipeline =
           pipelines.find((pipeline) => pipeline?.id === preferredPipelineId) || pipelines[0];
         this._preferredAssistSttEngine = preferredPipeline?.stt_engine || null;
-        this._preferredAssistTtsEngine = preferredPipeline?.tts_engine || null;
+        this._preferredAssistTtsEngine = preferredPipeline?.tts_engine || this._assistTtsEngines[0] || null;
 
         const sttLanguage = preferredPipeline?.stt_language || preferredPipeline?.language;
         const ttsLanguage =
@@ -1319,8 +1345,9 @@ class OpenClawChatCard extends HTMLElement {
               return;
             }
 
+            const reason = this._lastHaTtsAttempt ? ` (${this._lastHaTtsAttempt})` : "";
             this._voiceStatus =
-              "Home Assistant TTS unavailable; using browser default voice as fallback.";
+              `Home Assistant TTS unavailable${reason}; using browser default voice as fallback.`;
             this._render();
             try {
               speechSynthesis.cancel();
@@ -1394,8 +1421,24 @@ class OpenClawChatCard extends HTMLElement {
   async _speakViaHomeAssistantTts(text, language) {
     if (!this._hass) return false;
 
-    const engine = this._preferredAssistTtsEngine;
-    if (!engine) return false;
+    this._lastHaTtsAttempt = null;
+
+    const configuredEngine =
+      typeof this._config?.ha_tts_engine === "string" ? this._config.ha_tts_engine.trim() : "";
+    const engineCandidates = [];
+    for (const candidate of [configuredEngine, this._preferredAssistTtsEngine, ...this._assistTtsEngines]) {
+      if (typeof candidate !== "string") continue;
+      const normalized = candidate.trim();
+      if (!normalized) continue;
+      if (!engineCandidates.includes(normalized)) {
+        engineCandidates.push(normalized);
+      }
+    }
+
+    if (!engineCandidates.length) {
+      this._lastHaTtsAttempt = "no_tts_engine_configured_in_assist_pipeline";
+      return false;
+    }
 
     const token = this._hass?.auth?.data?.access_token;
     const headers = {
@@ -1403,59 +1446,84 @@ class OpenClawChatCard extends HTMLElement {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    const payloads = [
-      {
-        platform: engine,
-        message: text,
-        language,
-        cache: true,
-      },
-      {
-        engine_id: engine,
-        message: text,
-        language,
-        cache: true,
-      },
-      {
-        tts_engine_id: engine,
-        message: text,
-        language,
-        cache: true,
-      },
-    ];
-
     let audioPath = null;
-    for (const payload of payloads) {
-      try {
-        const response = await fetch("/api/tts_get_url", {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) continue;
+    let selectedEngine = null;
+    let lastError = "unknown_error";
 
-        const body = await response.json();
-        const candidate = body?.url || body?.path || body?.audio_url || body?.audioUrl;
-        if (!candidate) continue;
+    for (const engine of engineCandidates) {
+      console.info("OpenClaw: trying HA TTS engine", engine, "language", language);
+      const payloads = [
+        {
+          platform: engine,
+          message: text,
+          language,
+          cache: true,
+        },
+        {
+          engine_id: engine,
+          message: text,
+          language,
+          cache: true,
+        },
+        {
+          tts_engine_id: engine,
+          message: text,
+          language,
+          cache: true,
+        },
+      ];
 
-        audioPath = String(candidate).startsWith("http")
-          ? String(candidate)
-          : String(candidate).startsWith("/")
+      for (const payload of payloads) {
+        try {
+          const response = await fetch("/api/tts_get_url", {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            lastError = `engine=${engine}, tts_get_url_http=${response.status}`;
+            continue;
+          }
+
+          const body = await response.json();
+          const candidate = body?.url || body?.path || body?.audio_url || body?.audioUrl;
+          if (!candidate) {
+            lastError = `engine=${engine}, no_audio_url_in_response`;
+            continue;
+          }
+
+          audioPath = String(candidate).startsWith("http")
             ? String(candidate)
-            : `/${String(candidate)}`;
+            : String(candidate).startsWith("/")
+              ? String(candidate)
+              : `/${String(candidate)}`;
+          selectedEngine = engine;
+          break;
+        } catch (err) {
+          console.debug("OpenClaw: HA TTS URL request failed", err);
+          lastError = `engine=${engine}, tts_get_url_request_failed`;
+        }
+      }
+
+      if (audioPath) {
         break;
-      } catch (err) {
-        console.debug("OpenClaw: HA TTS URL request failed", err);
       }
     }
 
-    if (!audioPath) return false;
+    if (!audioPath || !selectedEngine) {
+      this._lastHaTtsAttempt = lastError;
+      return false;
+    }
 
     try {
       const audioResponse = await fetch(audioPath, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!audioResponse.ok) return false;
+      if (!audioResponse.ok) {
+        this._lastHaTtsAttempt = `engine=${selectedEngine}, audio_fetch_http=${audioResponse.status}`;
+        return false;
+      }
 
       const audioBlob = await audioResponse.blob();
       const objectUrl = URL.createObjectURL(audioBlob);
@@ -1481,9 +1549,11 @@ class OpenClawChatCard extends HTMLElement {
         }
       });
 
+      this._lastHaTtsAttempt = `engine=${selectedEngine}, ok`;
       return true;
     } catch (err) {
       console.debug("OpenClaw: HA TTS playback failed", err);
+      this._lastHaTtsAttempt = `engine=${selectedEngine}, audio_playback_failed`;
       return false;
     }
   }
