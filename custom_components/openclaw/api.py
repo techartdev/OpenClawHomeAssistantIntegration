@@ -287,27 +287,85 @@ class OpenClawApiClient:
             ) from err
 
     async def async_check_connection(self) -> bool:
-        """Check if the gateway is reachable and authenticated.
+        """Check if the gateway is reachable, API is enabled, and auth works.
 
-        Uses the /v1/models endpoint as a lightweight probe — the only
-        consistently available GET endpoint on the OpenClaw gateway.
+        The OpenClaw gateway only implements /v1/chat/completions (not
+        /v1/models). We send a POST with an empty messages list — the gateway
+        auth middleware validates the token first, then the endpoint returns a
+        400 (or similar) for the invalid body. This proves:
+          - Server is reachable.
+          - The OpenAI-compatible API layer is enabled (enable_openai_api).
+          - The auth token is accepted.
 
-        The /v1/models endpoint requires 'enable_openai_api' to be enabled in
-        the addon configuration. If the gateway returns HTML instead of JSON,
-        the OpenAI-compatible API is likely disabled and an OpenClawApiError
-        is raised so the caller can surface a meaningful error.
+        If the route is not registered (API disabled) the SPA catch-all
+        returns 200 text/html — detected via content-type check.
 
         Returns:
             True if connected and authenticated.
 
         Raises:
             OpenClawAuthError: If authentication fails.
-            OpenClawApiError: If the gateway returns an unexpected response
-                (e.g. HTML when enable_openai_api is disabled).
+            OpenClawApiError: If the gateway returns HTML (API not enabled).
             OpenClawConnectionError: If the gateway is unreachable.
         """
-        await self.async_get_models()
-        return True
+        session = await self._get_session()
+        url = f"{self._base_url}{API_CHAT_COMPLETIONS}"
+
+        try:
+            async with session.post(
+                url,
+                headers=self._headers(),
+                json={"messages": [], "stream": False},
+                timeout=API_TIMEOUT,
+            ) as resp:
+                if resp.status in (401, 403):
+                    raise OpenClawAuthError(
+                        "Authentication failed — check gateway token"
+                    )
+
+                content_type = resp.content_type or ""
+                if "json" not in content_type:
+                    text = await resp.text()
+                    raise OpenClawApiError(
+                        f"Gateway returned '{content_type}' instead of JSON. "
+                        "The OpenAI-compatible API is likely not enabled. "
+                        "Enable 'enable_openai_api' in the addon settings "
+                        f"and restart. Response: {text[:200]}"
+                    )
+
+                # Any JSON response (200, 400, 422, etc.) means the
+                # endpoint exists, auth passed, and the API layer is active.
+                return True
+
+        except (aiohttp.ClientConnectorError, aiohttp.ClientOSError, asyncio.TimeoutError) as err:
+            raise OpenClawConnectionError(
+                f"Cannot connect to OpenClaw gateway at {url}: {err}"
+            ) from err
+
+    async def async_check_alive(self) -> bool:
+        """Lightweight connectivity check — is the gateway process running?
+
+        Sends a GET to the base URL. The SPA catch-all returns 200 HTML for
+        any route, so any non-error HTTP response means the server is alive.
+        Auth is NOT verified here (the SPA ignores tokens).
+
+        Returns:
+            True if the gateway HTTP server is responding.
+
+        Raises:
+            OpenClawConnectionError: If the gateway is unreachable.
+        """
+        session = await self._get_session()
+        try:
+            async with session.get(
+                self._base_url,
+                timeout=API_TIMEOUT,
+            ) as resp:
+                return resp.status < 500
+        except (aiohttp.ClientConnectorError, aiohttp.ClientOSError, asyncio.TimeoutError) as err:
+            raise OpenClawConnectionError(
+                f"Cannot connect to OpenClaw gateway: {err}"
+            ) from err
 
     async def async_close(self) -> None:
         """Close the HTTP session."""

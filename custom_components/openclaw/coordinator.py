@@ -80,41 +80,30 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from the OpenClaw gateway.
 
-        The OpenClaw gateway only exposes OpenAI-compatible endpoints.
-        /v1/models is used as both the connectivity probe and the model
-        data source; /api/status and /api/sessions do not exist on the
-        gateway — it returns its SPA home page for unknown routes.
+        The OpenClaw gateway does not implement /v1/models — only
+        /v1/chat/completions is guaranteed. We use a lightweight base-URL
+        ping (``async_check_alive``) to confirm the gateway process is
+        running and then attempt ``async_get_models`` as a best-effort call.
 
         Returns:
             Aggregated data dict for all entities.
         """
         data = self._offline_data()
 
+        # ── Connectivity check (base URL ping) ─────────────────────
         try:
-            models_resp = await self.client.async_get_models()
-            models = models_resp.get("data", [])
+            alive = await self.client.async_check_alive()
+            if not alive:
+                return data
 
             data[DATA_STATUS] = "online"
             data[DATA_CONNECTED] = True
-            data[DATA_GATEWAY_VERSION] = None  # Not exposed by gateway API
-            data[DATA_UPTIME] = None           # Not exposed by gateway API
-            data[DATA_SESSION_COUNT] = 0       # Sessions API does not exist
-            data[DATA_SESSIONS] = []           # Sessions API does not exist
+            data[DATA_GATEWAY_VERSION] = None
+            data[DATA_UPTIME] = None
+            data[DATA_SESSION_COUNT] = 0
+            data[DATA_SESSIONS] = []
             data[DATA_LAST_ACTIVITY] = self._last_activity
             self._consecutive_failures = 0
-
-            if models:
-                current = models[0]
-                self._model_cache = {
-                    DATA_MODEL: current.get("id", "unknown"),
-                    DATA_PROVIDER: current.get("owned_by"),
-                    DATA_CONTEXT_WINDOW: current.get("context_window"),
-                }
-
-        except OpenClawAuthError as err:
-            _LOGGER.warning("Gateway auth failed during poll: %s", err)
-            await self._try_refresh_token()
-            return data
 
         except OpenClawConnectionError:
             self._consecutive_failures += 1
@@ -127,9 +116,23 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             return data
 
-        except OpenClawApiError as err:
-            _LOGGER.warning("Error fetching gateway models: %s", err)
-            return data
+        # ── Best-effort model info (/v1/models may not exist) ──────
+        try:
+            models_resp = await self.client.async_get_models()
+            models = models_resp.get("data", [])
+            if models:
+                current = models[0]
+                self._model_cache = {
+                    DATA_MODEL: current.get("id", "unknown"),
+                    DATA_PROVIDER: current.get("owned_by"),
+                    DATA_CONTEXT_WINDOW: current.get("context_window"),
+                }
+        except OpenClawAuthError as err:
+            _LOGGER.warning("Gateway auth failed during poll: %s", err)
+            await self._try_refresh_token()
+        except OpenClawApiError:
+            # /v1/models not implemented — expected, not an error
+            pass
 
         data.update(self._model_cache)
         return data

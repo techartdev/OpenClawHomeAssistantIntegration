@@ -2,6 +2,26 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.4] - 2026-02-20
+
+### Fixed
+- **Connection probe no longer uses `/v1/models`** — the OpenClaw gateway does
+  not implement that endpoint (only `/v1/chat/completions` is registered when
+  `enable_openai_api` is enabled). Unrecognised routes fall through to the SPA
+  catch-all and return HTML, which caused every connection check to fail with
+  `openai_api_disabled` even when the API was actually enabled.
+- `async_check_connection()` now POSTs to `/v1/chat/completions` with an empty
+  messages body. The gateway's auth middleware validates the token first, then
+  the endpoint returns a JSON error for the invalid body — proving server is
+  reachable, API is enabled, and the token is accepted. No LLM call is made.
+- Coordinator polling now uses `async_check_alive()` (lightweight base-URL GET)
+  for connectivity, with `async_get_models()` as a best-effort call that is
+  silently ignored if the endpoint doesn't exist.
+
+### Added
+- New `async_check_alive()` method — simple HTTP GET to the gateway base URL to
+  confirm the gateway process is running (does not verify auth or API status).
+
 ## [0.1.3] - 2026-02-20
 
 ### Fixed
