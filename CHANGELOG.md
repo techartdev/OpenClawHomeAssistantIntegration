@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.18] - 2026-02-20
+
+### Fixed
+- Voice input now requires wake word only for continuous voice mode, not for manual mic usage.
+- Added in-card voice status feedback (listening, wake-word wait, sending, error) to make microphone behavior visible.
+- Improved handling for unsupported speech-recognition browsers with explicit UI status.
+
 ## [0.1.17] - 2026-02-20
 
 ### Fixed

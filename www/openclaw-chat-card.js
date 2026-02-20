@@ -63,6 +63,7 @@ class OpenClawChatCard extends HTMLElement {
     this._wakeWordEnabled = false;
     this._wakeWord = "hey openclaw";
     this._alwaysVoiceMode = false;
+    this._voiceStatus = "";
   }
 
   // ── HA card interface ───────────────────────────────────────────────
@@ -391,6 +392,8 @@ class OpenClawChatCard extends HTMLElement {
   _startVoiceRecognition() {
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
       console.warn("OpenClaw: Speech recognition not supported in this browser");
+      this._voiceStatus = "Speech recognition not supported by this browser.";
+      this._render();
       return;
     }
 
@@ -399,6 +402,9 @@ class OpenClawChatCard extends HTMLElement {
     this._recognition.continuous = this._isVoiceMode;
     this._recognition.interimResults = true;
     this._recognition.lang = this._hass?.language || "en-US";
+    this._voiceStatus = this._isVoiceMode
+      ? `Listening (wake word: ${this._wakeWord || "hey openclaw"})`
+      : "Listening…";
 
     this._recognition.onresult = (event) => {
       const result = event.results[event.results.length - 1];
@@ -406,29 +412,40 @@ class OpenClawChatCard extends HTMLElement {
         const text = result[0].transcript?.trim();
         if (!text) return;
 
-        if (this._wakeWordEnabled) {
+        const requireWakeWord = this._wakeWordEnabled && this._isVoiceMode;
+
+        if (requireWakeWord) {
           const wake = this._wakeWord || "hey openclaw";
           const lower = text.toLowerCase();
           const wakePos = lower.indexOf(wake);
           if (wakePos < 0) {
+            this._voiceStatus = `Heard: \"${text}\" (waiting for wake word)`;
+            this._render();
             return;
           }
 
           let command = text.slice(wakePos + wake.length).trim();
           command = command.replace(/^[,:;.!?\-]+\s*/, "");
           if (!command) {
+            this._voiceStatus = "Wake word detected. Say command after wake word.";
+            this._render();
             return;
           }
+          this._voiceStatus = "Sending…";
+          this._render();
           this._sendMessage(command);
           return;
         }
 
+        this._voiceStatus = "Sending…";
+        this._render();
         this._sendMessage(text);
       }
     };
 
     this._recognition.onerror = (event) => {
       console.error("OpenClaw: Speech recognition error:", event.error);
+      this._voiceStatus = `Voice error: ${event.error}`;
       this._render();
     };
 
@@ -441,6 +458,7 @@ class OpenClawChatCard extends HTMLElement {
           // Ignore — may already be started
         }
       } else {
+        this._voiceStatus = "";
         this._render();
       }
     };
@@ -455,6 +473,7 @@ class OpenClawChatCard extends HTMLElement {
       this._recognition = null;
     }
     this._isVoiceMode = false;
+    this._voiceStatus = "";
   }
 
   _toggleVoiceMode() {
@@ -740,6 +759,11 @@ class OpenClawChatCard extends HTMLElement {
           animation: pulse 1.5s infinite;
           margin-right: 4px;
         }
+        .voice-status {
+          padding: 4px 16px 0 16px;
+          font-size: 12px;
+          color: var(--oc-text-secondary);
+        }
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.3; }
@@ -776,6 +800,8 @@ class OpenClawChatCard extends HTMLElement {
               : messagesHtml
           }
         </div>
+
+        ${this._voiceStatus ? `<div class="voice-status">${this._escapeHtml(this._voiceStatus)}</div>` : ""}
 
         <div class="input-area">
           <textarea
