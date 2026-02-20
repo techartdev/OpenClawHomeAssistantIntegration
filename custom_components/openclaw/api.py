@@ -193,6 +193,7 @@ class OpenClawApiClient:
         }
         if session_id:
             payload["session_id"] = session_id
+            payload["user"] = session_id
         if model:
             payload["model"] = model
 
@@ -200,6 +201,7 @@ class OpenClawApiClient:
         headers = self._headers()
         if session_id:
             headers["X-Session-Id"] = session_id
+            headers["x-openclaw-session-key"] = session_id
 
         session = await self._get_session()
         url = f"{self._base_url}{API_CHAT_COMPLETIONS}"
@@ -253,12 +255,14 @@ class OpenClawApiClient:
         }
         if session_id:
             payload["session_id"] = session_id
+            payload["user"] = session_id
         if model:
             payload["model"] = model
 
         headers = self._headers()
         if session_id:
             headers["X-Session-Id"] = session_id
+            headers["x-openclaw-session-key"] = session_id
 
         session = await self._get_session()
         url = f"{self._base_url}{API_CHAT_COMPLETIONS}"

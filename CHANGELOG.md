@@ -2,6 +2,14 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.39] - 2026-02-20
+
+### Fixed
+- Aligned gateway chat requests with OpenClaw session behavior by sending OpenAI `user` with the stable session ID.
+- Added `x-openclaw-session-key` request header for explicit session routing on OpenClaw gateways.
+- Improves multi-turn continuity where `/v1/chat/completions` would otherwise default to stateless per-request sessions.
+- Removed per-request chat-history replay to avoid unnecessary prompt growth when gateway session memory is active.
+
 ## [0.1.37] - 2026-02-20
 
 ### Fixed

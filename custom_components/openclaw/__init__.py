@@ -78,7 +78,7 @@ _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 # URL at which the card JS is served (registered via register_static_path)
 _CARD_STATIC_URL = f"/openclaw/{_CARD_FILENAME}"
 # Versioned URL used for Lovelace resource registration to avoid stale browser cache
-_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.37"
+_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.39"
 
 OpenClawConfigEntry = ConfigEntry
 
@@ -386,6 +386,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
             system_prompt = apply_context_policy(raw_context, max_chars, strategy)
 
             _append_chat_history(hass, session_id, "user", message)
+
             response = await client.async_send_message(
                 message=message,
                 session_id=session_id,
