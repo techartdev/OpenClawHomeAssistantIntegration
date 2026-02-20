@@ -1260,7 +1260,6 @@ class OpenClawChatCard extends HTMLElement {
     const fallbackLanguage = this._normalizeSpeechLanguage(
       this._hass?.locale?.language || this._hass?.selectedLanguage || this._hass?.language || navigator.language || "en-US"
     );
-    let attemptedFallback = false;
 
     const pickVoice = (targetLanguage, voices) => {
       const normalizedTarget = String(targetLanguage || "").toLowerCase();
@@ -1297,6 +1296,7 @@ class OpenClawChatCard extends HTMLElement {
     const speakNow = (targetLanguage, allowFallback = true) => {
       const utterance = new SpeechSynthesisUtterance(plain);
       utterance.lang = targetLanguage;
+      let preSpeakHaFallbackAttempted = false;
 
       const voices = speechSynthesis.getVoices() || [];
       if (voices.length) {
@@ -1307,26 +1307,63 @@ class OpenClawChatCard extends HTMLElement {
         if (selection.lang) {
           utterance.lang = selection.lang;
         }
+
+        if (!selection.matched && allowFallback) {
+          preSpeakHaFallbackAttempted = true;
+          this._voiceStatus = "No matching browser TTS voice, trying Home Assistant TTS…";
+          this._render();
+          this._speakViaHomeAssistantTts(plain, targetLanguage).then((ok) => {
+            if (ok) {
+              this._voiceStatus = "";
+              this._render();
+              return;
+            }
+
+            this._voiceStatus =
+              "Home Assistant TTS unavailable; using browser default voice as fallback.";
+            this._render();
+            try {
+              speechSynthesis.cancel();
+            } catch (e) {
+              // ignore
+            }
+            speechSynthesis.speak(utterance);
+          });
+          return;
+        }
       }
 
       utterance.onerror = (event) => {
-        if (allowFallback && !attemptedFallback && targetLanguage !== fallbackLanguage) {
-          attemptedFallback = true;
+        if (!preSpeakHaFallbackAttempted) {
+          this._voiceStatus = "Browser TTS failed, trying Home Assistant TTS…";
+          this._render();
+          this._speakViaHomeAssistantTts(plain, targetLanguage).then((ok) => {
+            if (ok) {
+              this._voiceStatus = "";
+              this._render();
+              return;
+            }
+
+            if (allowFallback && targetLanguage !== fallbackLanguage) {
+              speakNow(fallbackLanguage, false);
+              return;
+            }
+
+            const reason = event?.error ? ` (${event.error})` : "";
+            this._voiceStatus = `TTS error for language ${targetLanguage}${reason}`;
+            this._render();
+          });
+          return;
+        }
+
+        if (allowFallback && targetLanguage !== fallbackLanguage) {
           speakNow(fallbackLanguage, false);
           return;
         }
-        this._voiceStatus = "Browser TTS failed, trying Home Assistant TTS…";
+
+        const reason = event?.error ? ` (${event.error})` : "";
+        this._voiceStatus = `TTS error for language ${targetLanguage}${reason}`;
         this._render();
-        this._speakViaHomeAssistantTts(plain, targetLanguage).then((ok) => {
-          if (ok) {
-            this._voiceStatus = "";
-            this._render();
-            return;
-          }
-          const reason = event?.error ? ` (${event.error})` : "";
-          this._voiceStatus = `TTS error for language ${targetLanguage}${reason}`;
-          this._render();
-        });
       };
 
       try {

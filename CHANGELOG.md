@@ -2,6 +2,12 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.47] - 2026-02-21
+
+### Fixed
+- Improved continuous voice-mode responsiveness by finalizing recognition on speech end, reducing delay before sending spoken messages.
+- Improved TTS fallback order: when no matching browser language voice is available, the card now tries Home Assistant TTS first before browser default-language fallback.
+
 ## [0.1.46] - 2026-02-21
 
 ### Fixed
