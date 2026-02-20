@@ -2,6 +2,12 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.12] - 2026-02-20
+
+### Fixed
+- Improved response parsing for nested/modern OpenAI-compatible payloads (including `output` / nested `content` shapes), which could previously result in missing UI replies.
+- Applied the same recursive extraction strategy to both service-based chat responses and Assist conversation fallback parsing.
+
 ## [0.1.11] - 2026-02-20
 
 ### Fixed

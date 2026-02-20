@@ -380,8 +380,11 @@ def _get_first_entry_data(hass: HomeAssistant) -> dict[str, Any] | None:
     return None
 
 
-def _coerce_text(value: Any) -> str | None:
-    """Convert known message content shapes to plain text."""
+def _extract_text_recursive(value: Any, depth: int = 0) -> str | None:
+    """Recursively extract assistant text from nested response payloads."""
+    if depth > 8:
+        return None
+
     if isinstance(value, str):
         text = value.strip()
         return text or None
@@ -389,38 +392,41 @@ def _coerce_text(value: Any) -> str | None:
     if isinstance(value, list):
         parts: list[str] = []
         for item in value:
-            if isinstance(item, str):
-                if item.strip():
-                    parts.append(item.strip())
-                continue
-            if isinstance(item, dict):
-                text_part = item.get("text") or item.get("content")
-                if isinstance(text_part, str) and text_part.strip():
-                    parts.append(text_part.strip())
+            extracted = _extract_text_recursive(item, depth + 1)
+            if extracted:
+                parts.append(extracted)
         if parts:
             return "\n".join(parts)
+        return None
+
+    if isinstance(value, dict):
+        priority_keys = (
+            "output_text",
+            "text",
+            "content",
+            "message",
+            "response",
+            "answer",
+            "choices",
+            "output",
+            "delta",
+        )
+
+        for key in priority_keys:
+            if key not in value:
+                continue
+            extracted = _extract_text_recursive(value.get(key), depth + 1)
+            if extracted:
+                return extracted
+
+        for nested_value in value.values():
+            extracted = _extract_text_recursive(nested_value, depth + 1)
+            if extracted:
+                return extracted
 
     return None
 
 
 def _extract_assistant_message(response: dict[str, Any]) -> str | None:
-    """Extract assistant text from multiple OpenAI-compatible response shapes."""
-    choices = response.get("choices")
-    if isinstance(choices, list) and choices:
-        first = choices[0]
-        if isinstance(first, dict):
-            message = first.get("message")
-            if isinstance(message, dict):
-                extracted = _coerce_text(message.get("content"))
-                if extracted:
-                    return extracted
-            extracted = _coerce_text(first.get("text"))
-            if extracted:
-                return extracted
-
-    for key in ("output_text", "response", "message", "content", "answer"):
-        extracted = _coerce_text(response.get(key))
-        if extracted:
-            return extracted
-
-    return None
+    """Extract assistant text from modern/legacy OpenAI-compatible responses."""
+    return _extract_text_recursive(response)
