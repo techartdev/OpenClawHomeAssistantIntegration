@@ -1,5 +1,5 @@
 {
-  "name": "OpenClaw",
+  "name": "OpenClaw Assistant",
   "render_readme": true,
   "domains": ["sensor", "binary_sensor", "conversation"],
   "iot_class": "local_polling",
