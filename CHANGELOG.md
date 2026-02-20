@@ -2,6 +2,12 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.37] - 2026-02-20
+
+### Fixed
+- Improved conversation continuity by sending `session_id` in chat completion JSON payloads (in addition to `X-Session-Id` header), for both regular and streaming requests.
+- Reduces cases where the gateway treats each message as a new conversation when custom headers are ignored upstream.
+
 ## [0.1.36] - 2026-02-20
 
 ### Fixed

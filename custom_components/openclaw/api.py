@@ -191,6 +191,8 @@ class OpenClawApiClient:
             "messages": messages,
             "stream": False,
         }
+        if session_id:
+            payload["session_id"] = session_id
         if model:
             payload["model"] = model
 
@@ -249,6 +251,8 @@ class OpenClawApiClient:
             "messages": messages,
             "stream": True,
         }
+        if session_id:
+            payload["session_id"] = session_id
         if model:
             payload["model"] = model
 
