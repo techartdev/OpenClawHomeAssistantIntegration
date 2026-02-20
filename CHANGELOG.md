@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.30] - 2026-02-20
+
+### Fixed
+- Treated `SpeechRecognition` `no-speech` as a normal listening condition instead of an error.
+- Reduced voice error noise by avoiding retry scheduling for `no-speech` events.
+- Added clearer in-card status text for silence/no-speech scenarios.
+
 ## [0.1.29] - 2026-02-20
 
 ### Fixed

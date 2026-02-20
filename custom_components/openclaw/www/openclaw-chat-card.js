@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.2.8";
+const CARD_VERSION = "0.2.9";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -611,6 +611,13 @@ class OpenClawChatCard extends HTMLElement {
         console.debug("OpenClaw: Speech recognition aborted");
         return;
       }
+      if (err === "no-speech") {
+        this._voiceStatus = this._isVoiceMode
+          ? "Listening… (no speech detected yet)"
+          : "No speech detected. Tap mic and try again.";
+        this._render();
+        return;
+      }
       if (err === "network") {
         console.warn("OpenClaw: Speech recognition network error");
       } else {
@@ -642,7 +649,7 @@ class OpenClawChatCard extends HTMLElement {
         this._voiceStatus = `Voice error: ${err}`;
       }
 
-      if (["network", "audio-capture", "no-speech"].includes(err) && !this._voiceBackendBlocked) {
+      if (["network", "audio-capture"].includes(err) && !this._voiceBackendBlocked) {
         this._scheduleVoiceRetry();
       }
       this._render();
