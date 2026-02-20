@@ -165,6 +165,7 @@ class OpenClawApiClient:
         message: str,
         session_id: str | None = None,
         model: str | None = None,
+        system_prompt: str | None = None,
         stream: bool = False,
     ) -> dict[str, Any]:
         """Send a chat message (non-streaming).
@@ -181,8 +182,13 @@ class OpenClawApiClient:
         if stream:
             raise ValueError("Use async_stream_message() for streaming")
 
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": message})
+
         payload: dict[str, Any] = {
-            "messages": [{"role": "user", "content": message}],
+            "messages": messages,
             "stream": False,
         }
         if model:
@@ -220,6 +226,7 @@ class OpenClawApiClient:
         message: str,
         session_id: str | None = None,
         model: str | None = None,
+        system_prompt: str | None = None,
     ) -> AsyncIterator[str]:
         """Send a chat message and stream the response via SSE.
 
@@ -233,8 +240,13 @@ class OpenClawApiClient:
         Yields:
             Content delta strings from the streaming response.
         """
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": message})
+
         payload: dict[str, Any] = {
-            "messages": [{"role": "user", "content": message}],
+            "messages": messages,
             "stream": True,
         }
         if model:

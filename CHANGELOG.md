@@ -2,6 +2,15 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.13] - 2026-02-20
+
+### Added
+- Added native Home Assistant Assist entity exposure support to OpenClaw requests.
+- OpenClaw now includes context for entities exposed in **Settings → Voice assistants → Expose**.
+
+### Changed
+- Service chat (`openclaw.send_message`) and conversation agent (streaming + fallback) now pass exposed-entities context as a system prompt.
+
 ## [0.1.12] - 2026-02-20
 
 ### Fixed

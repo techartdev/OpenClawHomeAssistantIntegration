@@ -33,6 +33,17 @@ A native Home Assistant integration for communicating with the
 The **OpenClaw Assistant** addon must be installed and running.  
 The integration will auto-detect it — no manual configuration needed.
 
+## Exposed entities (important)
+
+OpenClaw uses Home Assistant's native **Assist entity exposure** controls.
+Only entities exposed to Assist are included in the context sent to OpenClaw.
+
+Configure this in Home Assistant:
+
+1. Go to **Settings → Voice assistants**
+2. Open the **Expose** tab
+3. Select which entities are exposed to **Assist**
+
 ## Chat Card
 
 The chat card is registered automatically when the integration loads — no

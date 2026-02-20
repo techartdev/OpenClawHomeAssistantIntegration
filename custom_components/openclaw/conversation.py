@@ -26,6 +26,7 @@ from .const import (
     EVENT_MESSAGE_RECEIVED,
 )
 from .coordinator import OpenClawCoordinator
+from .exposure import build_exposed_entities_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -100,9 +101,23 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
 
         message = user_input.text
         conversation_id = user_input.conversation_id or "default"
+        assistant_id = getattr(user_input, "assistant", None) or "assist"
+        exposed_context = build_exposed_entities_context(
+            self.hass,
+            assistant=assistant_id,
+        )
+        extra_system_prompt = getattr(user_input, "extra_system_prompt", None)
+        system_prompt = "\n\n".join(
+            part for part in (exposed_context, extra_system_prompt) if part
+        ) or None
 
         try:
-            full_response = await self._get_response(client, message, conversation_id)
+            full_response = await self._get_response(
+                client,
+                message,
+                conversation_id,
+                system_prompt,
+            )
         except OpenClawApiError as err:
             _LOGGER.error("OpenClaw conversation error: %s", err)
 
@@ -113,7 +128,10 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
                 if refreshed:
                     try:
                         full_response = await self._get_response(
-                            client, message, conversation_id
+                            client,
+                            message,
+                            conversation_id,
+                            system_prompt,
                         )
                     except OpenClawApiError as retry_err:
                         return self._error_result(
@@ -156,6 +174,7 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
         client: OpenClawApiClient,
         message: str,
         conversation_id: str,
+        system_prompt: str | None = None,
     ) -> str:
         """Get a response from OpenClaw, trying streaming first."""
         # Try streaming (lower TTFB for voice pipeline)
@@ -163,6 +182,7 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
         async for chunk in client.async_stream_message(
             message=message,
             session_id=conversation_id,
+            system_prompt=system_prompt,
         ):
             full_response += chunk
 
@@ -173,6 +193,7 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
         response = await client.async_send_message(
             message=message,
             session_id=conversation_id,
+            system_prompt=system_prompt,
         )
         extracted = self._extract_text_recursive(response)
         return extracted or ""

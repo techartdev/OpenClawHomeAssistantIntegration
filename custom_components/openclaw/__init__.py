@@ -44,6 +44,7 @@ from .const import (
     SERVICE_SEND_MESSAGE,
 )
 from .coordinator import OpenClawCoordinator
+from .exposure import build_exposed_entities_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -313,9 +314,11 @@ def _async_register_services(hass: HomeAssistant) -> None:
         coordinator: OpenClawCoordinator = entry_data["coordinator"]
 
         try:
+            system_prompt = build_exposed_entities_context(hass, assistant="assist")
             response = await client.async_send_message(
                 message=message,
                 session_id=session_id,
+                system_prompt=system_prompt,
             )
 
             assistant_message = _extract_assistant_message(response)
