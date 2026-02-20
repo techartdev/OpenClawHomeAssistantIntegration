@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.2.1";
+const CARD_VERSION = "0.2.2";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -66,6 +66,7 @@ class OpenClawChatCard extends HTMLElement {
     this._voiceStatus = "";
     this._voiceRetryTimer = null;
     this._voiceRetryCount = 0;
+    this._speechLangOverride = null;
   }
 
   // ── HA card interface ───────────────────────────────────────────────
@@ -395,6 +396,52 @@ class OpenClawChatCard extends HTMLElement {
 
   // ── Voice ───────────────────────────────────────────────────────────
 
+  _normalizeSpeechLanguage(lang) {
+    if (!lang) return "en-US";
+
+    const cleaned = String(lang).trim().replace(/_/g, "-").toLowerCase();
+    if (!cleaned) return "en-US";
+
+    if (cleaned.includes("-")) {
+      const [base, region] = cleaned.split("-", 2);
+      if (base && region) {
+        return `${base}-${region.toUpperCase()}`;
+      }
+    }
+
+    const languageMap = {
+      bg: "bg-BG",
+      en: "en-US",
+      de: "de-DE",
+      fr: "fr-FR",
+      es: "es-ES",
+      it: "it-IT",
+      pt: "pt-PT",
+      ru: "ru-RU",
+      nl: "nl-NL",
+      pl: "pl-PL",
+      tr: "tr-TR",
+      uk: "uk-UA",
+      cs: "cs-CZ",
+      ro: "ro-RO",
+      el: "el-GR",
+    };
+
+    return languageMap[cleaned] || `${cleaned}-${cleaned.toUpperCase()}`;
+  }
+
+  _getSpeechRecognitionLanguage() {
+    if (this._speechLangOverride) {
+      return this._speechLangOverride;
+    }
+
+    const configuredLang = this._config.voice_language;
+    const hassLang = this._hass?.selectedLanguage || this._hass?.language;
+    const browserLang = navigator.language;
+    const preferred = configuredLang || hassLang || browserLang || "en-US";
+    return this._normalizeSpeechLanguage(preferred);
+  }
+
   _startVoiceRecognition() {
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
       console.warn("OpenClaw: Speech recognition not supported in this browser");
@@ -407,10 +454,10 @@ class OpenClawChatCard extends HTMLElement {
     this._recognition = new SpeechRecognition();
     this._recognition.continuous = this._isVoiceMode;
     this._recognition.interimResults = true;
-    this._recognition.lang = this._hass?.language || "en-US";
+    this._recognition.lang = this._getSpeechRecognitionLanguage();
     this._voiceStatus = this._isVoiceMode
-      ? `Listening (wake word: ${this._wakeWord || "hey openclaw"})`
-      : "Listening…";
+      ? `Listening (${this._recognition.lang}, wake word: ${this._wakeWord || "hey openclaw"})`
+      : `Listening (${this._recognition.lang})…`;
 
     this._recognition.onresult = (event) => {
       const result = event.results[event.results.length - 1];
@@ -454,7 +501,12 @@ class OpenClawChatCard extends HTMLElement {
       const err = event?.error || "unknown";
       if (err === "network") {
         this._voiceStatus =
-          "Voice network error: browser speech service unavailable. Check internet and retry.";
+          "Voice network error: browser speech service unavailable. Retrying with fallback locale…";
+
+        const browserLocale = this._normalizeSpeechLanguage(navigator.language || "en-US");
+        if (!this._speechLangOverride && browserLocale !== this._recognition.lang) {
+          this._speechLangOverride = browserLocale;
+        }
       } else if (err === "not-allowed") {
         this._voiceStatus = "Microphone access denied. Allow mic permission for this site.";
       } else if (err === "audio-capture") {
@@ -463,7 +515,7 @@ class OpenClawChatCard extends HTMLElement {
         this._voiceStatus = `Voice error: ${err}`;
       }
 
-      if (this._isVoiceMode && ["network", "audio-capture", "no-speech"].includes(err)) {
+      if (["network", "audio-capture", "no-speech"].includes(err)) {
         this._scheduleVoiceRetry();
       }
       this._render();
@@ -502,7 +554,7 @@ class OpenClawChatCard extends HTMLElement {
   }
 
   _scheduleVoiceRetry() {
-    if (!this._isVoiceMode) return;
+    if (!this._isVoiceMode && !this._speechLangOverride) return;
     if (this._voiceRetryCount >= 6) {
       this._voiceStatus =
         "Voice retry stopped after repeated errors. Toggle voice mode to try again.";

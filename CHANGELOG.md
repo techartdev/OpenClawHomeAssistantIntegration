@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.22] - 2026-02-20
+
+### Fixed
+- Improved speech-recognition language handling by normalizing language tags (e.g. `bg` → `bg-BG`).
+- Added automatic fallback retry with browser locale on `SpeechRecognition` `network` errors.
+- Updated versioned card resource URL to force clients to load the latest voice handling logic.
+
 ## [0.1.21] - 2026-02-20
 
 ### Fixed
