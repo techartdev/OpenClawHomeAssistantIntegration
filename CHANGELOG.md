@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.45] - 2026-02-21
+
+### Fixed
+- Hardened voice startup/toggle flow in the chat card to prevent voice mode from getting stuck when browser speech startup fails.
+- Added guarded async click handlers for voice buttons to avoid uncaught promise failures during voice mode enable/disable.
+- Browser speech startup failures now set a clear in-card voice status and automatically revert continuous voice mode.
+
 ## [0.1.44] - 2026-02-21
 
 ### Fixed

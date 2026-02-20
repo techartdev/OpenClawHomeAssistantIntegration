@@ -615,19 +615,25 @@ class OpenClawChatCard extends HTMLElement {
     return this._voiceProviderIntegration || "browser";
   }
 
-  _startVoiceRecognition() {
+  async _startVoiceRecognition() {
     const provider = this._getVoiceProvider();
-    if (this._isVoiceMode && provider === "assist_stt") {
-      this._voiceStatus =
-        "Voice mode uses browser speech for continuous listening (Assist STT remains available for manual mic).";
-      this._startBrowserVoiceRecognition();
-      return;
+    try {
+      if (this._isVoiceMode && provider === "assist_stt") {
+        this._voiceStatus =
+          "Voice mode uses browser speech for continuous listening (Assist STT remains available for manual mic).";
+        return this._startBrowserVoiceRecognition();
+      }
+      if (provider === "assist_stt") {
+        return await this._startAssistSttRecognition();
+      }
+      return this._startBrowserVoiceRecognition();
+    } catch (err) {
+      console.error("OpenClaw: voice startup failed", err);
+      this._voiceStatus = "Voice startup failed. Try again or use text input.";
+      this._recognition = null;
+      this._render();
+      return false;
     }
-    if (provider === "assist_stt") {
-      this._startAssistSttRecognition();
-      return;
-    }
-    this._startBrowserVoiceRecognition();
   }
 
   async _startAssistSttRecognition() {
@@ -637,20 +643,20 @@ class OpenClawChatCard extends HTMLElement {
       this._voiceStatus =
         "Continuous voice mode currently requires browser speech. Switch voice provider to browser or disable continuous mode.";
       this._render();
-      return;
+      return false;
     }
 
     if (!navigator.mediaDevices?.getUserMedia) {
       this._voiceStatus = "Microphone capture not supported by this browser.";
       this._render();
-      return;
+      return false;
     }
 
     if (!this._preferredAssistSttEngine) {
       this._voiceStatus =
         "No Assist STT engine found in preferred voice pipeline. Configure Voice settings first.";
       this._render();
-      return;
+      return false;
     }
 
     try {
@@ -737,12 +743,14 @@ class OpenClawChatCard extends HTMLElement {
       this._assistAutoStopTimer = setTimeout(() => {
         this._stopAssistSttRecognition(true);
       }, 4500);
+      return true;
     } catch (err) {
       console.error("OpenClaw: failed to start Assist STT recording", err);
       this._voiceStatus = "Could not start microphone recording for Assist STT.";
       this._assistRecordingActive = false;
       this._recognition = null;
       this._render();
+      return false;
     }
   }
 
@@ -1021,13 +1029,14 @@ class OpenClawChatCard extends HTMLElement {
       this._voiceStatus =
         "Voice input disabled on Brave by default due browser SpeechRecognition network failures. Use Chrome/Edge, or set allow_brave_webspeech: true in card config to force-enable experimental mode.";
       this._render();
-      return;
+      return false;
     }
 
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
       console.warn("OpenClaw: Speech recognition not supported in this browser");
+      this._voiceStatus = "Browser speech recognition is not supported here.";
       this._render();
-      return;
+      return false;
     }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1153,8 +1162,17 @@ class OpenClawChatCard extends HTMLElement {
       }
     };
 
-    this._recognition.start();
-    this._render();
+    try {
+      this._recognition.start();
+      this._render();
+      return true;
+    } catch (err) {
+      console.error("OpenClaw: failed to start SpeechRecognition", err);
+      this._voiceStatus = "Failed to start browser speech recognition.";
+      this._recognition = null;
+      this._render();
+      return false;
+    }
   }
 
   _stopVoiceRecognition() {
@@ -1209,7 +1227,10 @@ class OpenClawChatCard extends HTMLElement {
     await this._loadIntegrationSettings(false);
     this._isVoiceMode = !this._isVoiceMode;
     if (this._isVoiceMode) {
-      this._startVoiceRecognition();
+      const started = await this._startVoiceRecognition();
+      if (!started) {
+        this._isVoiceMode = false;
+      }
     } else {
       this._stopVoiceRecognition();
     }
@@ -1654,13 +1675,24 @@ class OpenClawChatCard extends HTMLElement {
           this._stopVoiceRecognition();
           this._render();
         } else {
-          this._startVoiceRecognition();
+          this._startVoiceRecognition().catch((err) => {
+            console.error("OpenClaw: voice start failed", err);
+            this._voiceStatus = "Voice startup failed.";
+            this._render();
+          });
         }
       });
     }
 
     if (voiceModeBtn) {
-      voiceModeBtn.addEventListener("click", () => this._toggleVoiceMode());
+      voiceModeBtn.addEventListener("click", () => {
+        this._toggleVoiceMode().catch((err) => {
+          console.error("OpenClaw: voice mode toggle failed", err);
+          this._isVoiceMode = false;
+          this._voiceStatus = "Voice mode failed to start.";
+          this._render();
+        });
+      });
     }
 
     const clearBtn = this.shadowRoot.getElementById("clear-btn");
