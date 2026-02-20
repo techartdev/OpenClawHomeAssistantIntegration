@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.19] - 2026-02-20
+
+### Changed
+- Made `custom_components/openclaw/www/openclaw-chat-card.js` the single source of truth for card implementation.
+- Replaced root `www/openclaw-chat-card.js` with a tiny loader shim that imports `/openclaw/openclaw-chat-card.js`.
+- Removed manual-maintenance duplication between two full card script files.
+
 ## [0.1.18] - 2026-02-20
 
 ### Fixed

@@ -24,9 +24,8 @@ A native Home Assistant integration for communicating with the
 ### Manual
 
 1. Copy `custom_components/openclaw/` into your HA `config/custom_components/` directory
-2. Copy `www/openclaw-chat-card.js` into `config/www/`
-3. Restart Home Assistant
-4. Add the integration via Settings → Devices & Services
+2. Restart Home Assistant
+3. Add the integration via Settings → Devices & Services
 
 ## Prerequisites
 

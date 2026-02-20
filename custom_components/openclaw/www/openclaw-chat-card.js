@@ -64,6 +64,8 @@ class OpenClawChatCard extends HTMLElement {
     this._wakeWord = "hey openclaw";
     this._alwaysVoiceMode = false;
     this._voiceStatus = "";
+    this._voiceRetryTimer = null;
+    this._voiceRetryCount = 0;
   }
 
   // ── HA card interface ───────────────────────────────────────────────
@@ -119,6 +121,10 @@ class OpenClawChatCard extends HTMLElement {
     if (this._historySyncRetryTimer) {
       clearTimeout(this._historySyncRetryTimer);
       this._historySyncRetryTimer = null;
+    }
+    if (this._voiceRetryTimer) {
+      clearTimeout(this._voiceRetryTimer);
+      this._voiceRetryTimer = null;
     }
   }
 
@@ -445,7 +451,21 @@ class OpenClawChatCard extends HTMLElement {
 
     this._recognition.onerror = (event) => {
       console.error("OpenClaw: Speech recognition error:", event.error);
-      this._voiceStatus = `Voice error: ${event.error}`;
+      const err = event?.error || "unknown";
+      if (err === "network") {
+        this._voiceStatus =
+          "Voice network error: browser speech service unavailable. Check internet and retry.";
+      } else if (err === "not-allowed") {
+        this._voiceStatus = "Microphone access denied. Allow mic permission for this site.";
+      } else if (err === "audio-capture") {
+        this._voiceStatus = "No microphone available.";
+      } else {
+        this._voiceStatus = `Voice error: ${err}`;
+      }
+
+      if (this._isVoiceMode && ["network", "audio-capture", "no-speech"].includes(err)) {
+        this._scheduleVoiceRetry();
+      }
       this._render();
     };
 
@@ -472,8 +492,38 @@ class OpenClawChatCard extends HTMLElement {
       this._recognition.abort();
       this._recognition = null;
     }
+    if (this._voiceRetryTimer) {
+      clearTimeout(this._voiceRetryTimer);
+      this._voiceRetryTimer = null;
+    }
+    this._voiceRetryCount = 0;
     this._isVoiceMode = false;
     this._voiceStatus = "";
+  }
+
+  _scheduleVoiceRetry() {
+    if (!this._isVoiceMode) return;
+    if (this._voiceRetryCount >= 6) {
+      this._voiceStatus =
+        "Voice retry stopped after repeated errors. Toggle voice mode to try again.";
+      this._render();
+      return;
+    }
+
+    if (this._voiceRetryTimer) {
+      clearTimeout(this._voiceRetryTimer);
+    }
+
+    const delayMs = Math.min(1000 * (this._voiceRetryCount + 1), 6000);
+    this._voiceRetryCount += 1;
+    this._voiceStatus = `Voice reconnecting in ${Math.ceil(delayMs / 1000)}s…`;
+    this._render();
+
+    this._voiceRetryTimer = setTimeout(() => {
+      this._voiceRetryTimer = null;
+      if (!this._isVoiceMode) return;
+      this._startVoiceRecognition();
+    }, delayMs);
   }
 
   _toggleVoiceMode() {
