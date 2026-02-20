@@ -350,7 +350,7 @@ class OpenClawChatCard extends HTMLElement {
         });
       }
 
-      this._wakeWordEnabled = !!result?.wake_word_enabled;
+      this._wakeWordEnabled = this._coerceBoolean(result?.wake_word_enabled, false);
       this._wakeWord = (result?.wake_word || "hey openclaw").toString().trim().toLowerCase();
       this._allowBraveWebSpeechIntegration = !!result?.allow_brave_webspeech;
       this._voiceProviderIntegration =
@@ -541,6 +541,17 @@ class OpenClawChatCard extends HTMLElement {
     };
 
     return languageMap[cleaned] || `${cleaned}-${cleaned.toUpperCase()}`;
+  }
+
+  _coerceBoolean(value, fallback = false) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value !== 0;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (["true", "1", "yes", "on"].includes(normalized)) return true;
+      if (["false", "0", "no", "off", ""].includes(normalized)) return false;
+    }
+    return fallback;
   }
 
   _getSpeechRecognitionLanguage() {
@@ -1024,7 +1035,9 @@ class OpenClawChatCard extends HTMLElement {
     this._recognition.continuous = this._isVoiceMode;
     this._recognition.lang = this._getSpeechRecognitionLanguage();
     this._voiceStatus = this._isVoiceMode
-      ? `Listening (${this._recognition.lang}, wake word: ${this._wakeWord || "hey openclaw"})`
+      ? this._wakeWordEnabled
+        ? `Listening (${this._recognition.lang}, wake word: ${this._wakeWord || "hey openclaw"})`
+        : `Listening (${this._recognition.lang})`
       : `Listening (${this._recognition.lang})…`;
 
     this._recognition.onresult = (event) => {

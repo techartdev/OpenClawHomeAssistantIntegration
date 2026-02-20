@@ -92,7 +92,7 @@ _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 # URL at which the card JS is served (registered via register_static_path)
 _CARD_STATIC_URL = f"/openclaw/{_CARD_FILENAME}"
 # Versioned URL used for Lovelace resource registration to avoid stale browser cache
-_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.43"
+_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.44"
 
 OpenClawConfigEntry = ConfigEntry
 
@@ -151,6 +151,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenClawConfigEntry) -> 
         "coordinator": coordinator,
         "addon_config_path": addon_config_path,
         "entry": entry,
+        "entry_id": entry.entry_id,
     }
 
     # First data fetch — if it fails the coordinator marks entities unavailable
@@ -386,8 +387,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
         client: OpenClawApiClient = entry_data["client"]
         coordinator: OpenClawCoordinator = entry_data["coordinator"]
-        entry: ConfigEntry = entry_data["entry"]
-        options = entry.options
+        options = _get_entry_options(hass, entry_data)
 
         try:
             include_context = options.get(
@@ -571,6 +571,25 @@ def _get_first_entry_data(hass: HomeAssistant) -> dict[str, Any] | None:
         if isinstance(entry_data, dict) and "client" in entry_data:
             return entry_data
     return None
+
+
+def _get_entry_options(hass: HomeAssistant, entry_data: dict[str, Any]) -> dict[str, Any]:
+    """Return latest config entry options for an integration entry data payload."""
+    latest_entry: ConfigEntry | None = None
+
+    entry_id = entry_data.get("entry_id")
+    if isinstance(entry_id, str):
+        latest_entry = hass.config_entries.async_get_entry(entry_id)
+
+    if latest_entry is None:
+        cached_entry = entry_data.get("entry")
+        cached_entry_id = getattr(cached_entry, "entry_id", None)
+        if isinstance(cached_entry_id, str):
+            latest_entry = hass.config_entries.async_get_entry(cached_entry_id) or cached_entry
+        elif isinstance(cached_entry, ConfigEntry):
+            latest_entry = cached_entry
+
+    return latest_entry.options if latest_entry else {}
 
 
 def _extract_text_recursive(value: Any, depth: int = 0) -> str | None:
@@ -793,7 +812,7 @@ def _async_register_websocket_api(hass: HomeAssistant) -> None:
     ) -> None:
         """Return frontend-related integration settings."""
         entry_data = _get_first_entry_data(hass)
-        options = entry_data.get("entry").options if entry_data and entry_data.get("entry") else {}
+        options = _get_entry_options(hass, entry_data) if entry_data else {}
         connection.send_result(
             msg["id"],
             {

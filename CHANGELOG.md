@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.44] - 2026-02-21
+
+### Fixed
+- Fixed chat-card settings sync to always read latest integration options instead of a potentially stale cached config entry.
+- Wake-word disable now applies reliably after unchecking in integration options.
+- Browser voice listening status now only shows wake-word requirement when wake word is actually enabled.
+
 ## [0.1.43] - 2026-02-21
 
 ### Fixed
