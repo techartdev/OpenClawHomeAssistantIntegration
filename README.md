@@ -3,6 +3,9 @@
 ## [Join our Discord Server!](https://discord.gg/Nx4H3XmY)
 ![OpenClaw Assistant Integration](https://github.com/techartdev/OpenClawHomeAssistantIntegration/blob/main/pic.png?raw=true)
 
+_If you want to install OpenClaw as  Add-On/App directly on your Home Assistant instance take a look here:_ https://github.com/techartdev/OpenClawHomeAssistant
+
+
 OpenClaw is a Home Assistant custom integration that connects your HA instance to the OpenClaw assistant backend and provides:
 
 - A native conversation agent for Assist
