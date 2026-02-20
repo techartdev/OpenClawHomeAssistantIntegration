@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.20] - 2026-02-20
+
+### Changed
+- Added versioned card resource URL (`/openclaw/openclaw-chat-card.js?v=...`) to reduce stale frontend caching issues.
+- Added runtime source diagnostics (`import.meta.url`) in card console output to verify which script file is actually loaded.
+- Updated root loader shim to import versioned card bundle URL.
+
 ## [0.1.19] - 2026-02-20
 
 ### Changed

@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.2.0";
+const CARD_VERSION = "0.2.1";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -1055,3 +1055,5 @@ console.info(
   "color: white; background: #2563eb; font-weight: bold; padding: 2px 6px; border-radius: 4px 0 0 4px;",
   "color: #2563eb; background: #e5e7eb; font-weight: bold; padding: 2px 6px; border-radius: 0 4px 4px 0;"
 );
+
+console.info("OPENCLAW-CHAT-CARD source", import.meta.url);

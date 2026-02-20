@@ -70,8 +70,10 @@ _MAX_CHAT_HISTORY = 200
 # Path to the chat card JS inside the integration package (custom_components/openclaw/www/)
 _CARD_FILENAME = "openclaw-chat-card.js"
 _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
-# URL at which the card JS will be served (registered via register_static_path)
-_CARD_URL = f"/openclaw/{_CARD_FILENAME}"
+# URL at which the card JS is served (registered via register_static_path)
+_CARD_STATIC_URL = f"/openclaw/{_CARD_FILENAME}"
+# Versioned URL used for Lovelace resource registration to avoid stale browser cache
+_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.20"
 
 type OpenClawConfigEntry = ConfigEntry
 
@@ -259,13 +261,13 @@ async def _async_register_static_path(hass: HomeAssistant) -> str | None:
         from homeassistant.components.http import StaticPathConfig  # noqa: PLC0415
 
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(_CARD_URL, str(_CARD_PATH), cache_headers=True)]
+            [StaticPathConfig(_CARD_STATIC_URL, str(_CARD_PATH), cache_headers=True)]
         )
     except (ImportError, AttributeError):
-        hass.http.register_static_path(_CARD_URL, str(_CARD_PATH), True)
+        hass.http.register_static_path(_CARD_STATIC_URL, str(_CARD_PATH), True)
 
     hass.data[static_key] = True
-    _LOGGER.debug("Registered static path: %s", _CARD_URL)
+    _LOGGER.debug("Registered static path: %s", _CARD_STATIC_URL)
     return _CARD_URL
 
 
