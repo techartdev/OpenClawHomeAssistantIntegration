@@ -74,6 +74,7 @@ class OpenClawChatCard extends HTMLElement {
     this._allowBraveWebSpeechIntegration = false;
     this._voiceProviderIntegration = "browser";
     this._preferredAssistSttEngine = null;
+    this._preferredAssistTtsEngine = null;
     this._voiceBackendBlocked = false;
     this._voiceStopRequested = false;
     this._assistRecordingActive = false;
@@ -381,6 +382,7 @@ class OpenClawChatCard extends HTMLElement {
         const preferredPipeline =
           pipelines.find((pipeline) => pipeline?.id === preferredPipelineId) || pipelines[0];
         this._preferredAssistSttEngine = preferredPipeline?.stt_engine || null;
+        this._preferredAssistTtsEngine = preferredPipeline?.tts_engine || null;
 
         const sttLanguage = preferredPipeline?.stt_language || preferredPipeline?.language;
         const ttsLanguage =
@@ -1241,29 +1243,77 @@ class OpenClawChatCard extends HTMLElement {
     if (!("speechSynthesis" in window)) return;
     // Strip markdown for TTS
     const plain = text.replace(/[*_`#\[\]()]/g, "");
-    const language = this._getSpeechSynthesisLanguage();
+    const preferredLanguage = this._getSpeechSynthesisLanguage();
+    const fallbackLanguage = this._normalizeSpeechLanguage(
+      this._hass?.locale?.language || this._hass?.selectedLanguage || this._hass?.language || navigator.language || "en-US"
+    );
+    let attemptedFallback = false;
 
-    const speakNow = () => {
-      const utterance = new SpeechSynthesisUtterance(plain);
-      utterance.lang = language;
+    const pickVoice = (targetLanguage, voices) => {
+      const normalizedTarget = String(targetLanguage || "").toLowerCase();
+      const targetBase = normalizedTarget.split("-")[0];
 
-      const voices = speechSynthesis.getVoices() || [];
-      if (voices.length) {
-        const exactVoice = voices.find(
-          (voice) => String(voice.lang || "").toLowerCase() === language.toLowerCase()
+      const exactVoice = voices.find(
+        (voice) => String(voice.lang || "").toLowerCase() === normalizedTarget
+      );
+      if (exactVoice) {
+        return { voice: exactVoice, lang: exactVoice.lang || targetLanguage, matched: true };
+      }
+
+      if (targetBase) {
+        const baseVoice = voices.find((voice) =>
+          String(voice.lang || "").toLowerCase().startsWith(`${targetBase}-`)
         );
-        const prefix = language.split("-")[0]?.toLowerCase();
-        const languageVoice =
-          exactVoice ||
-          voices.find((voice) => String(voice.lang || "").toLowerCase().startsWith(`${prefix}-`));
-        if (languageVoice) {
-          utterance.voice = languageVoice;
+        if (baseVoice) {
+          return { voice: baseVoice, lang: baseVoice.lang || targetLanguage, matched: true };
         }
       }
 
-      utterance.onerror = () => {
-        this._voiceStatus = `TTS error for language ${language}`;
+      if (voices.length) {
+        const defaultVoice = voices.find((voice) => voice.default) || voices[0];
+        return {
+          voice: defaultVoice,
+          lang: defaultVoice?.lang || fallbackLanguage || "en-US",
+          matched: false,
+        };
+      }
+
+      return { voice: null, lang: targetLanguage, matched: false };
+    };
+
+    const speakNow = (targetLanguage, allowFallback = true) => {
+      const utterance = new SpeechSynthesisUtterance(plain);
+      utterance.lang = targetLanguage;
+
+      const voices = speechSynthesis.getVoices() || [];
+      if (voices.length) {
+        const selection = pickVoice(targetLanguage, voices);
+        if (selection.voice) {
+          utterance.voice = selection.voice;
+        }
+        if (selection.lang) {
+          utterance.lang = selection.lang;
+        }
+      }
+
+      utterance.onerror = (event) => {
+        if (allowFallback && !attemptedFallback && targetLanguage !== fallbackLanguage) {
+          attemptedFallback = true;
+          speakNow(fallbackLanguage, false);
+          return;
+        }
+        this._voiceStatus = "Browser TTS failed, trying Home Assistant TTS…";
         this._render();
+        this._speakViaHomeAssistantTts(plain, targetLanguage).then((ok) => {
+          if (ok) {
+            this._voiceStatus = "";
+            this._render();
+            return;
+          }
+          const reason = event?.error ? ` (${event.error})` : "";
+          this._voiceStatus = `TTS error for language ${targetLanguage}${reason}`;
+          this._render();
+        });
       };
 
       try {
@@ -1276,19 +1326,116 @@ class OpenClawChatCard extends HTMLElement {
 
     const loadedVoices = speechSynthesis.getVoices() || [];
     if (loadedVoices.length) {
-      speakNow();
+      speakNow(preferredLanguage);
       return;
     }
 
     const handleVoicesChanged = () => {
       speechSynthesis.removeEventListener("voiceschanged", handleVoicesChanged);
-      speakNow();
+      speakNow(preferredLanguage);
     };
     speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged);
     setTimeout(() => {
       speechSynthesis.removeEventListener("voiceschanged", handleVoicesChanged);
-      speakNow();
+      speakNow(preferredLanguage);
     }, 800);
+  }
+
+  async _speakViaHomeAssistantTts(text, language) {
+    if (!this._hass) return false;
+
+    const engine = this._preferredAssistTtsEngine;
+    if (!engine) return false;
+
+    const token = this._hass?.auth?.data?.access_token;
+    const headers = {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    const payloads = [
+      {
+        platform: engine,
+        message: text,
+        language,
+        cache: true,
+      },
+      {
+        engine_id: engine,
+        message: text,
+        language,
+        cache: true,
+      },
+      {
+        tts_engine_id: engine,
+        message: text,
+        language,
+        cache: true,
+      },
+    ];
+
+    let audioPath = null;
+    for (const payload of payloads) {
+      try {
+        const response = await fetch("/api/tts_get_url", {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) continue;
+
+        const body = await response.json();
+        const candidate = body?.url || body?.path || body?.audio_url || body?.audioUrl;
+        if (!candidate) continue;
+
+        audioPath = String(candidate).startsWith("http")
+          ? String(candidate)
+          : String(candidate).startsWith("/")
+            ? String(candidate)
+            : `/${String(candidate)}`;
+        break;
+      } catch (err) {
+        console.debug("OpenClaw: HA TTS URL request failed", err);
+      }
+    }
+
+    if (!audioPath) return false;
+
+    try {
+      const audioResponse = await fetch(audioPath, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!audioResponse.ok) return false;
+
+      const audioBlob = await audioResponse.blob();
+      const objectUrl = URL.createObjectURL(audioBlob);
+
+      await new Promise((resolve, reject) => {
+        const audio = new Audio();
+        audio.src = objectUrl;
+        audio.onended = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(true);
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error("audio_playback_failed"));
+        };
+
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+          playPromise.catch((err) => {
+            URL.revokeObjectURL(objectUrl);
+            reject(err);
+          });
+        }
+      });
+
+      return true;
+    } catch (err) {
+      console.debug("OpenClaw: HA TTS playback failed", err);
+      return false;
+    }
   }
 
   // ── File attachments ────────────────────────────────────────────────

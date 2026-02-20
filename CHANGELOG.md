@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.46] - 2026-02-21
+
+### Fixed
+- Improved chat-card TTS resilience when the preferred language voice (for example `bg-BG`) is temporarily unavailable in the browser.
+- Added automatic fallback to an available voice/language instead of hard failing speech output.
+- TTS error status now includes browser-provided error reason when available.
+
 ## [0.1.45] - 2026-02-21
 
 ### Fixed
