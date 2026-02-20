@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.24] - 2026-02-20
+
+### Fixed
+- Added proactive Brave browser guard for card voice input to avoid recurring `SpeechRecognition` `network` failures.
+- Voice is now disabled by default on Brave with a clear status message and opt-in override (`allow_brave_webspeech: true`).
+- Reduced noisy console output for `network` speech errors.
+
 ## [0.1.23] - 2026-02-20
 
 ### Fixed

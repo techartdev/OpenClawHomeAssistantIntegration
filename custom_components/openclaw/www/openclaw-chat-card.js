@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.2.3";
+const CARD_VERSION = "0.2.4";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -88,6 +88,7 @@ class OpenClawChatCard extends HTMLElement {
       show_timestamps: config.show_timestamps !== false,
       show_voice_button: config.show_voice_button !== false,
       show_clear_button: config.show_clear_button !== false,
+      allow_brave_webspeech: config.allow_brave_webspeech === true,
       session_id: config.session_id || null,
       ...config,
     };
@@ -458,6 +459,13 @@ class OpenClawChatCard extends HTMLElement {
   _startVoiceRecognition() {
     this._voiceBackendBlocked = false;
 
+    if (this._isLikelyBraveBrowser() && !this._config.allow_brave_webspeech) {
+      this._voiceStatus =
+        "Voice input disabled on Brave by default due browser SpeechRecognition network failures. Use Chrome/Edge, or set allow_brave_webspeech: true in card config to force-enable experimental mode.";
+      this._render();
+      return;
+    }
+
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
       console.warn("OpenClaw: Speech recognition not supported in this browser");
       this._voiceStatus = "Speech recognition not supported by this browser.";
@@ -512,8 +520,12 @@ class OpenClawChatCard extends HTMLElement {
     };
 
     this._recognition.onerror = (event) => {
-      console.error("OpenClaw: Speech recognition error:", event.error);
       const err = event?.error || "unknown";
+      if (err === "network") {
+        console.warn("OpenClaw: Speech recognition network error");
+      } else {
+        console.error("OpenClaw: Speech recognition error:", err);
+      }
       if (err === "network") {
         this._voiceNetworkErrorCount += 1;
         const browserLocale = this._normalizeSpeechLanguage(navigator.language || "en-US");
