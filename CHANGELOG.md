@@ -11,6 +11,9 @@ All notable changes to the OpenClaw Home Assistant Integration will be documente
 ### Documentation
 - Expanded README voice documentation with practical guidance for `voice_provider` (`browser` vs `assist_stt`) and provider-specific troubleshooting.
 
+### Changed
+- Lowered declared HACS minimum Home Assistant Core version to `2025.1.0` after compatibility hardening updates.
+
 ## [0.1.33] - 2026-02-20
 
 ### Fixed
