@@ -1043,7 +1043,9 @@ class OpenClawChatCard extends HTMLElement {
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     this._recognition = new SpeechRecognition();
-    this._recognition.continuous = this._isVoiceMode;
+    this._recognition.continuous = false;
+    this._recognition.interimResults = false;
+    this._recognition.maxAlternatives = 1;
     this._recognition.lang = this._getSpeechRecognitionLanguage();
     this._voiceStatus = this._isVoiceMode
       ? this._wakeWordEnabled
@@ -1085,6 +1087,17 @@ class OpenClawChatCard extends HTMLElement {
         this._voiceStatus = "Sending…";
         this._render();
         this._sendMessage(text);
+      }
+    };
+
+    this._recognition.onspeechend = () => {
+      if (this._voiceStopRequested) {
+        return;
+      }
+      try {
+        this._recognition.stop();
+      } catch (e) {
+        // ignore
       }
     };
 
