@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.3";
+const CARD_VERSION = "0.3.4";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -86,6 +86,7 @@ class OpenClawChatCard extends HTMLElement {
     this._assistAudioChunks = [];
     this._assistInputSampleRate = 16000;
     this._assistAutoStopTimer = null;
+    this._lastAssistantEventSignature = null;
   }
 
   // ── HA card interface ───────────────────────────────────────────────
@@ -180,6 +181,12 @@ class OpenClawChatCard extends HTMLElement {
     // Check if this event is for our session
     const sessionId = this._getSessionId();
     if (data.session_id && data.session_id !== sessionId) return;
+
+    const signature = `${sessionId}|${data.timestamp || ""}|${String(data.message)}`;
+    if (signature === this._lastAssistantEventSignature) {
+      return;
+    }
+    this._lastAssistantEventSignature = signature;
 
     const thinkingIdx = this._messages.findIndex((m) => m._thinking);
     if (thinkingIdx >= 0) {
@@ -569,6 +576,12 @@ class OpenClawChatCard extends HTMLElement {
 
   _startVoiceRecognition() {
     const provider = this._getVoiceProvider();
+    if (this._isVoiceMode && provider === "assist_stt") {
+      this._voiceStatus =
+        "Voice mode uses browser speech for continuous listening (Assist STT remains available for manual mic).";
+      this._startBrowserVoiceRecognition();
+      return;
+    }
     if (provider === "assist_stt") {
       this._startAssistSttRecognition();
       return;
@@ -1150,13 +1163,6 @@ class OpenClawChatCard extends HTMLElement {
   }
 
   _toggleVoiceMode() {
-    if (!this._isVoiceMode && this._getVoiceProvider() === "assist_stt") {
-      this._voiceStatus =
-        "Continuous voice mode is only available with browser voice provider.";
-      this._render();
-      return;
-    }
-
     this._isVoiceMode = !this._isVoiceMode;
     if (this._isVoiceMode) {
       this._startVoiceRecognition();

@@ -2,6 +2,12 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.36] - 2026-02-20
+
+### Fixed
+- Voice mode now auto-falls back to browser speech when `voice_provider` is `assist_stt`, instead of blocking continuous mode with an error message.
+- Reduced duplicated assistant replies in the chat card by deduplicating repeated `openclaw_message_received` payloads.
+
 ## [0.1.35] - 2026-02-20
 
 ### Fixed
