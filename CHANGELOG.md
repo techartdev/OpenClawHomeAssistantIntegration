@@ -2,6 +2,12 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.21] - 2026-02-20
+
+### Fixed
+- Added automatic cleanup of duplicate/legacy OpenClaw Lovelace resources (`/local/...`, unversioned `/openclaw/...`, `/hacsfiles/...`) so only the current versioned resource is kept.
+- Prevents loading multiple OpenClaw card generations (`v0.2.0` + `v0.2.1`) at the same time.
+
 ## [0.1.20] - 2026-02-20
 
 ### Changed

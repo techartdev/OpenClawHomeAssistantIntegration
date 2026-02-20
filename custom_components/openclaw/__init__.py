@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import logging
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -291,6 +292,29 @@ async def _async_add_lovelace_resource(hass: HomeAssistant, url: str) -> bool:
         return False
 
     try:
+        existing_items = list(resource_collection.async_items())
+
+        desired_path = urlsplit(url).path
+        legacy_paths = {
+            "/openclaw/openclaw-chat-card.js",
+            "/local/openclaw-chat-card.js",
+            "/hacsfiles/openclaw/openclaw-chat-card.js",
+        }
+
+        to_remove: list[str] = []
+        for item in existing_items:
+            item_id = item.get("id")
+            item_url = item.get("url")
+            if not item_id or not item_url:
+                continue
+            item_path = urlsplit(item_url).path
+            if item_path in legacy_paths and item_url != url:
+                to_remove.append(item_id)
+
+        for item_id in to_remove:
+            await resource_collection.async_delete_item(item_id)
+            _LOGGER.info("Removed legacy/duplicate OpenClaw Lovelace resource id=%s", item_id)
+
         existing_urls = {item["url"] for item in resource_collection.async_items()}
         if url in existing_urls:
             _LOGGER.debug("Lovelace resource already registered: %s", url)
