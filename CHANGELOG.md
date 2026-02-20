@@ -2,6 +2,17 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.6] - 2025-01-01
+
+### Fixed
+- Integration "Not loaded" state caused by `hass.http.register_static_path()` being called in `async_setup` before the HTTP server is ready
+- Removed `async_setup` and the synchronous `_async_register_static_path` helper
+- `_async_register_frontend` is now a proper `async` function, safe to fire-and-forget from `async_setup_entry`
+- Supports both the HA 2024.11+ `async_register_static_paths` / `StaticPathConfig` API and the legacy `register_static_path` API with automatic fallback to `/local/` URL
+- Frontend registration errors are caught and logged as warnings — they can never crash the integration load
+
+---
+
 ## [0.1.5] - 2026-02-20
 
 ### Added

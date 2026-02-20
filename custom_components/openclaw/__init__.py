@@ -49,16 +49,6 @@ _CARD_URL = f"/openclaw/{_CARD_FILENAME}"
 type OpenClawConfigEntry = ConfigEntry
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Global integration setup — runs once before any config entries.
-
-    Registers the static HTTP path for the chat card so the JS file is served
-    directly from inside the integration package, regardless of whether the
-    user installed via HACS or manually.
-    """
-    _async_register_static_path(hass)
-    return True
-
 # Service call schemas
 SEND_MESSAGE_SCHEMA = vol.Schema(
     {
@@ -111,7 +101,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenClawConfigEntry) -> 
     _async_register_services(hass)
 
     # Register the frontend card resource
-    _async_register_frontend(hass)
+    hass.async_create_task(_async_register_frontend(hass))
 
     # Listen for addon restart events to re-read token
     if addon_config_path:
@@ -177,50 +167,45 @@ def _async_setup_token_refresh(
 
 # ── Frontend registration ─────────────────────────────────────────────────────
 
-@callback
-def _async_register_static_path(hass: HomeAssistant) -> None:
-    """Register the integration's www/ folder as a static HTTP path.
+async def _async_register_frontend(hass: HomeAssistant) -> None:
+    """Register static path + Lovelace resource for the chat card.
 
-    After this the card JS is always available at /openclaw/openclaw-chat-card.js
-    regardless of how the integration was installed (HACS or manual).
-    """
-    static_key = f"{DOMAIN}_static_registered"
-    if hass.data.get(static_key):
-        return
-    hass.data[static_key] = True
-
-    if not _CARD_PATH.exists():
-        _LOGGER.warning(
-            "Chat card JS not found at %s — frontend resource will not be available",
-            _CARD_PATH,
-        )
-        return
-
-    hass.http.register_static_path(
-        f"/openclaw/{_CARD_FILENAME}",
-        str(_CARD_PATH),
-        cache_headers=True,
-    )
-    _LOGGER.debug("Registered static path: /openclaw/%s", _CARD_FILENAME)
-
-
-@callback
-def _async_register_frontend(hass: HomeAssistant) -> None:
-    """Register the Lovelace custom card resource (called once per setup).
-
-    Adds the card URL to Lovelace's resource list so it loads on every
-    dashboard automatically. No manual step required.
+    Called as a fire-and-forget task from async_setup_entry.
+    Wrapped entirely in try/except so it can NEVER crash the integration.
     """
     frontend_key = f"{DOMAIN}_frontend_registered"
     if hass.data.get(frontend_key):
         return
     hass.data[frontend_key] = True
 
-    # Ensure static path is registered (may have been missed if async_setup
-    # didn't run, e.g. during a config entry reload).
-    _async_register_static_path(hass)
+    url = _CARD_URL
 
-    hass.async_create_task(_async_add_lovelace_resource(hass, _CARD_URL))
+    # ── Step 1: Serve the JS via a static HTTP path ───────────────────
+    if _CARD_PATH.exists() and hass.http is not None:
+        try:
+            # HA 2024.11+ — async_register_static_paths w/ StaticPathConfig
+            from homeassistant.components.http import StaticPathConfig  # noqa: PLC0415
+            await hass.http.async_register_static_paths(
+                [StaticPathConfig(url, str(_CARD_PATH), cache_headers=True)]
+            )
+            _LOGGER.debug("Registered static path (new API): %s", url)
+        except (ImportError, AttributeError):
+            try:
+                # HA <2024.11 — synchronous register_static_path
+                hass.http.register_static_path(url, str(_CARD_PATH), True)
+                _LOGGER.debug("Registered static path (legacy API): %s", url)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Could not register static path '%s': %s", url, err)
+                url = f"/local/{_CARD_FILENAME}"  # fall back to /local/ URL
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Could not register static path '%s': %s", url, err)
+            url = f"/local/{_CARD_FILENAME}"
+    else:
+        # JS not in package (shouldn't happen) or HTTP not ready — try /local/
+        url = f"/local/{_CARD_FILENAME}"
+
+    # ── Step 2: Add to Lovelace resource store ───────────────────────
+    await _async_add_lovelace_resource(hass, url)
 
 
 async def _async_add_lovelace_resource(hass: HomeAssistant, url: str) -> None:
