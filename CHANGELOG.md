@@ -2,6 +2,12 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.43] - 2026-02-21
+
+### Fixed
+- Improved Home Assistant Assist conversation continuity by using stable fallback session IDs when `conversation_id` is missing.
+- Assist now falls back to per-user (`assist_user_*`) or per-device (`assist_device_*`) session keys instead of a single generic default.
+
 ## [0.1.42] - 2026-02-21
 
 ### Added

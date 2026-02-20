@@ -107,7 +107,7 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
         coordinator: OpenClawCoordinator = entry_data["coordinator"]
 
         message = user_input.text
-        conversation_id = user_input.conversation_id or "default"
+        conversation_id = self._resolve_conversation_id(user_input)
         assistant_id = "conversation"
         options = self.entry.options
         include_context = options.get(
@@ -188,6 +188,22 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
             response=intent_response,
             conversation_id=conversation_id,
         )
+
+    def _resolve_conversation_id(self, user_input: conversation.ConversationInput) -> str:
+        """Return conversation id from HA or a stable Assist fallback session key."""
+        if user_input.conversation_id:
+            return user_input.conversation_id
+
+        context = getattr(user_input, "context", None)
+        user_id = getattr(context, "user_id", None)
+        if user_id:
+            return f"assist_user_{user_id}"
+
+        device_id = getattr(user_input, "device_id", None)
+        if device_id:
+            return f"assist_device_{device_id}"
+
+        return "assist_default"
 
     async def _get_response(
         self,
