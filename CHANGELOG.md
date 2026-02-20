@@ -2,6 +2,16 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.7] - 2026-02-20
+
+### Fixed
+- Resolved chat card startup race where Lovelace resources were attempted before HTTP/Lovelace were ready, causing `Custom element not found: openclaw-chat-card`.
+- Frontend registration now retries and waits for Home Assistant startup readiness before giving up.
+- Static JS path registration is now idempotent and only marked successful after the path is actually registered.
+
+### Added
+- Added MIT license file at repository root (`LICENSE`).
+
 ## [0.1.6] - 2025-01-01
 
 ### Fixed

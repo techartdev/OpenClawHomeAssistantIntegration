@@ -5,6 +5,7 @@ Sets up the OpenClaw integration: API client, coordinator, platforms, and servic
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -173,42 +175,60 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     Called as a fire-and-forget task from async_setup_entry.
     Wrapped entirely in try/except so it can NEVER crash the integration.
     """
-    frontend_key = f"{DOMAIN}_frontend_registered"
+    frontend_key = f"{DOMAIN}_frontend_registration_started"
     if hass.data.get(frontend_key):
         return
     hass.data[frontend_key] = True
 
-    url = _CARD_URL
+    async def _register_with_retries() -> None:
+        for _ in range(12):
+            url = await _async_register_static_path(hass)
+            if url and await _async_add_lovelace_resource(hass, url):
+                return
+            await asyncio.sleep(5)
 
-    # ── Step 1: Serve the JS via a static HTTP path ───────────────────
-    if _CARD_PATH.exists() and hass.http is not None:
-        try:
-            # HA 2024.11+ — async_register_static_paths w/ StaticPathConfig
-            from homeassistant.components.http import StaticPathConfig  # noqa: PLC0415
-            await hass.http.async_register_static_paths(
-                [StaticPathConfig(url, str(_CARD_PATH), cache_headers=True)]
-            )
-            _LOGGER.debug("Registered static path (new API): %s", url)
-        except (ImportError, AttributeError):
-            try:
-                # HA <2024.11 — synchronous register_static_path
-                hass.http.register_static_path(url, str(_CARD_PATH), True)
-                _LOGGER.debug("Registered static path (legacy API): %s", url)
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Could not register static path '%s': %s", url, err)
-                url = f"/local/{_CARD_FILENAME}"  # fall back to /local/ URL
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.debug("Could not register static path '%s': %s", url, err)
-            url = f"/local/{_CARD_FILENAME}"
-    else:
-        # JS not in package (shouldn't happen) or HTTP not ready — try /local/
-        url = f"/local/{_CARD_FILENAME}"
+        _LOGGER.warning(
+            "Could not auto-register OpenClaw chat card resource after retries. "
+            "Add it manually in Dashboard resources: %s",
+            _CARD_URL,
+        )
 
-    # ── Step 2: Add to Lovelace resource store ───────────────────────
-    await _async_add_lovelace_resource(hass, url)
+    hass.async_create_task(_register_with_retries())
+
+    async def _on_ha_started(_event) -> None:
+        await _register_with_retries()
+
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _on_ha_started)
 
 
-async def _async_add_lovelace_resource(hass: HomeAssistant, url: str) -> None:
+async def _async_register_static_path(hass: HomeAssistant) -> str | None:
+    """Register the packaged chat-card JS as a static path when HTTP is ready."""
+    static_key = f"{DOMAIN}_static_registered"
+    if hass.data.get(static_key):
+        return _CARD_URL
+
+    if not _CARD_PATH.exists():
+        _LOGGER.warning("Chat card JS not found at %s", _CARD_PATH)
+        return None
+
+    if hass.http is None:
+        return None
+
+    try:
+        from homeassistant.components.http import StaticPathConfig  # noqa: PLC0415
+
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(_CARD_URL, str(_CARD_PATH), cache_headers=True)]
+        )
+    except (ImportError, AttributeError):
+        hass.http.register_static_path(_CARD_URL, str(_CARD_PATH), True)
+
+    hass.data[static_key] = True
+    _LOGGER.debug("Registered static path: %s", _CARD_URL)
+    return _CARD_URL
+
+
+async def _async_add_lovelace_resource(hass: HomeAssistant, url: str) -> bool:
     """Add the card URL to Lovelace's resource store if not already present."""
     # Lovelace stores resources in hass.data["lovelace"]["resources"].
     # It is a ResourceStorageCollection with:
@@ -216,22 +236,17 @@ async def _async_add_lovelace_resource(hass: HomeAssistant, url: str) -> None:
     #   .async_create_item(data) → persists a new resource
     lovelace_data = hass.data.get("lovelace")
     if not lovelace_data:
-        _LOGGER.debug(
-            "Lovelace not loaded; resource '%s' must be added manually if needed",
-            url,
-        )
-        return
+        return False
 
     resource_collection = lovelace_data.get("resources")
     if resource_collection is None:
-        _LOGGER.debug("Lovelace resource store not available")
-        return
+        return False
 
     try:
         existing_urls = {item["url"] for item in resource_collection.async_items()}
         if url in existing_urls:
             _LOGGER.debug("Lovelace resource already registered: %s", url)
-            return
+            return True
 
         await resource_collection.async_create_item(
             {"res_type": "module", "url": url}
@@ -240,6 +255,7 @@ async def _async_add_lovelace_resource(hass: HomeAssistant, url: str) -> None:
             "Auto-registered Lovelace resource: %s — the chat card is ready to use.",
             url,
         )
+        return True
     except Exception as err:  # noqa: BLE001
         _LOGGER.warning(
             "Could not auto-register Lovelace resource '%s': %s. "
@@ -247,6 +263,7 @@ async def _async_add_lovelace_resource(hass: HomeAssistant, url: str) -> None:
             url,
             err,
         )
+        return False
 
 
 # ── Service registration ──────────────────────────────────────────────────────
