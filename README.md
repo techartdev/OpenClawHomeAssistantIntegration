@@ -123,6 +123,7 @@ When enabled, OpenClaw tool-call responses can execute Home Assistant services.
 - **Wake word enabled**
 - **Wake word** (default: `hey openclaw`)
 - **Always voice mode** (continuous listening while card is open)
+- **Voice input provider** (`browser` or `assist_stt`)
 
 ---
 

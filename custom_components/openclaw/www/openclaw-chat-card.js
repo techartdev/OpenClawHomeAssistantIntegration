@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.2.9";
+const CARD_VERSION = "0.3.0";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -72,8 +72,19 @@ class OpenClawChatCard extends HTMLElement {
     this._integrationVoiceLanguage = null;
     this._integrationTtsLanguage = null;
     this._allowBraveWebSpeechIntegration = false;
+    this._voiceProviderIntegration = "browser";
+    this._preferredAssistSttEngine = null;
     this._voiceBackendBlocked = false;
     this._voiceStopRequested = false;
+    this._assistRecordingActive = false;
+    this._assistAudioStream = null;
+    this._assistAudioContext = null;
+    this._assistAudioSource = null;
+    this._assistAudioProcessor = null;
+    this._assistAudioSilenceGain = null;
+    this._assistAudioChunks = [];
+    this._assistInputSampleRate = 16000;
+    this._assistAutoStopTimer = null;
   }
 
   // ── HA card interface ───────────────────────────────────────────────
@@ -94,6 +105,7 @@ class OpenClawChatCard extends HTMLElement {
       show_voice_button: config.show_voice_button !== false,
       show_clear_button: config.show_clear_button !== false,
       allow_brave_webspeech: config.allow_brave_webspeech === true,
+      voice_provider: config.voice_provider || null,
       session_id: config.session_id || null,
       ...config,
     };
@@ -317,6 +329,8 @@ class OpenClawChatCard extends HTMLElement {
       this._wakeWord = (result?.wake_word || "hey openclaw").toString().trim().toLowerCase();
       this._alwaysVoiceMode = !!result?.always_voice_mode;
       this._allowBraveWebSpeechIntegration = !!result?.allow_brave_webspeech;
+      this._voiceProviderIntegration =
+        result?.voice_provider === "assist_stt" ? "assist_stt" : "browser";
       this._integrationVoiceLanguage = result?.language
         ? this._normalizeSpeechLanguage(result.language)
         : null;
@@ -337,6 +351,7 @@ class OpenClawChatCard extends HTMLElement {
           : [];
         const preferredPipeline =
           pipelines.find((pipeline) => pipeline?.id === preferredPipelineId) || pipelines[0];
+        this._preferredAssistSttEngine = preferredPipeline?.stt_engine || null;
 
         const sttLanguage = preferredPipeline?.stt_language || preferredPipeline?.language;
         const ttsLanguage =
@@ -536,7 +551,258 @@ class OpenClawChatCard extends HTMLElement {
     return brandMatch || ua.includes("brave") || !!navigator.brave;
   }
 
+  _getVoiceProvider() {
+    const configured = this._config.voice_provider;
+    if (configured === "assist_stt" || configured === "browser") {
+      return configured;
+    }
+    return this._voiceProviderIntegration || "browser";
+  }
+
   _startVoiceRecognition() {
+    const provider = this._getVoiceProvider();
+    if (provider === "assist_stt") {
+      this._startAssistSttRecognition();
+      return;
+    }
+    this._startBrowserVoiceRecognition();
+  }
+
+  async _startAssistSttRecognition() {
+    if (!this._hass) return;
+
+    if (this._isVoiceMode) {
+      this._voiceStatus =
+        "Continuous voice mode currently requires browser speech. Switch voice provider to browser or disable continuous mode.";
+      this._render();
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      this._voiceStatus = "Microphone capture not supported by this browser.";
+      this._render();
+      return;
+    }
+
+    if (!this._preferredAssistSttEngine) {
+      this._voiceStatus =
+        "No Assist STT engine found in preferred voice pipeline. Configure Voice settings first.";
+      this._render();
+      return;
+    }
+
+    try {
+      this._assistAudioChunks = [];
+      this._assistAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this._assistAudioContext = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: 16000,
+      });
+      this._assistInputSampleRate = this._assistAudioContext.sampleRate || 16000;
+
+      this._assistAudioSource = this._assistAudioContext.createMediaStreamSource(this._assistAudioStream);
+      this._assistAudioProcessor = this._assistAudioContext.createScriptProcessor(4096, 1, 1);
+      this._assistAudioSilenceGain = this._assistAudioContext.createGain();
+      this._assistAudioSilenceGain.gain.value = 0;
+
+      this._assistAudioProcessor.onaudioprocess = (event) => {
+        const input = event.inputBuffer.getChannelData(0);
+        this._assistAudioChunks.push(new Float32Array(input));
+      };
+
+      this._assistAudioSource.connect(this._assistAudioProcessor);
+      this._assistAudioProcessor.connect(this._assistAudioSilenceGain);
+      this._assistAudioSilenceGain.connect(this._assistAudioContext.destination);
+
+      this._assistRecordingActive = true;
+      this._recognition = { engine: "assist_stt" };
+      this._voiceStatus = "Listening with Home Assistant STT…";
+      this._render();
+
+      if (this._assistAutoStopTimer) {
+        clearTimeout(this._assistAutoStopTimer);
+      }
+      this._assistAutoStopTimer = setTimeout(() => {
+        this._stopAssistSttRecognition(true);
+      }, 4500);
+    } catch (err) {
+      console.error("OpenClaw: failed to start Assist STT recording", err);
+      this._voiceStatus = "Could not start microphone recording for Assist STT.";
+      this._assistRecordingActive = false;
+      this._recognition = null;
+      this._render();
+    }
+  }
+
+  async _stopAssistSttRecognition(processAudio) {
+    if (this._assistAutoStopTimer) {
+      clearTimeout(this._assistAutoStopTimer);
+      this._assistAutoStopTimer = null;
+    }
+
+    if (this._assistAudioProcessor) {
+      this._assistAudioProcessor.disconnect();
+      this._assistAudioProcessor.onaudioprocess = null;
+      this._assistAudioProcessor = null;
+    }
+    if (this._assistAudioSource) {
+      this._assistAudioSource.disconnect();
+      this._assistAudioSource = null;
+    }
+    if (this._assistAudioSilenceGain) {
+      this._assistAudioSilenceGain.disconnect();
+      this._assistAudioSilenceGain = null;
+    }
+    if (this._assistAudioStream) {
+      for (const track of this._assistAudioStream.getTracks()) {
+        track.stop();
+      }
+      this._assistAudioStream = null;
+    }
+    if (this._assistAudioContext) {
+      try {
+        await this._assistAudioContext.close();
+      } catch (e) {
+        // ignore
+      }
+      this._assistAudioContext = null;
+    }
+
+    this._assistRecordingActive = false;
+    this._recognition = null;
+
+    if (!processAudio) {
+      this._voiceStatus = "";
+      this._render();
+      return;
+    }
+
+    if (!this._assistAudioChunks.length) {
+      this._voiceStatus = "No speech detected. Tap mic and try again.";
+      this._render();
+      return;
+    }
+
+    this._voiceStatus = "Transcribing with Home Assistant STT…";
+    this._render();
+
+    try {
+      const language = this._getSpeechRecognitionLanguage();
+      const wavBuffer = this._encodeWavFromChunks(this._assistAudioChunks, this._assistInputSampleRate);
+      this._assistAudioChunks = [];
+
+      const token = this._hass?.auth?.data?.access_token;
+      const response = await fetch(
+        `/api/stt/${encodeURIComponent(this._preferredAssistSttEngine)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "audio/wav",
+            "X-Speech-Content":
+              `format=wav; codec=pcm; sample_rate=16000; bit_rate=16; channel=1; language=${language}`,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: new Blob([wavBuffer], { type: "audio/wav" }),
+        }
+      );
+
+      if (!response.ok) {
+        this._voiceStatus = `Assist STT error (${response.status}).`;
+        this._render();
+        return;
+      }
+
+      const sttResult = await response.json();
+      const transcript = String(sttResult?.text || "").trim();
+      if (!transcript) {
+        this._voiceStatus = "No speech recognized by Assist STT.";
+        this._render();
+        return;
+      }
+
+      this._voiceStatus = "Sending…";
+      this._render();
+      this._sendMessage(transcript);
+    } catch (err) {
+      console.error("OpenClaw: Assist STT transcription failed", err);
+      this._voiceStatus = "Assist STT transcription failed.";
+      this._render();
+    }
+  }
+
+  _downsampleBuffer(input, inputSampleRate, outputSampleRate) {
+    if (outputSampleRate >= inputSampleRate) {
+      return input;
+    }
+    const sampleRateRatio = inputSampleRate / outputSampleRate;
+    const outputLength = Math.round(input.length / sampleRateRatio);
+    const outputBuffer = new Float32Array(outputLength);
+
+    let outputOffset = 0;
+    let inputOffset = 0;
+    while (outputOffset < outputLength) {
+      const nextInputOffset = Math.round((outputOffset + 1) * sampleRateRatio);
+      let accumulator = 0;
+      let count = 0;
+      for (let idx = inputOffset; idx < nextInputOffset && idx < input.length; idx += 1) {
+        accumulator += input[idx];
+        count += 1;
+      }
+      outputBuffer[outputOffset] = count > 0 ? accumulator / count : 0;
+      outputOffset += 1;
+      inputOffset = nextInputOffset;
+    }
+
+    return outputBuffer;
+  }
+
+  _encodeWavFromChunks(chunks, inputSampleRate) {
+    let totalLength = 0;
+    for (const chunk of chunks) {
+      totalLength += chunk.length;
+    }
+
+    const merged = new Float32Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    const downsampled = this._downsampleBuffer(merged, inputSampleRate, 16000);
+    const buffer = new ArrayBuffer(44 + downsampled.length * 2);
+    const view = new DataView(buffer);
+
+    const writeString = (dataView, start, value) => {
+      for (let idx = 0; idx < value.length; idx += 1) {
+        dataView.setUint8(start + idx, value.charCodeAt(idx));
+      }
+    };
+
+    writeString(view, 0, "RIFF");
+    view.setUint32(4, 36 + downsampled.length * 2, true);
+    writeString(view, 8, "WAVE");
+    writeString(view, 12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, 16000, true);
+    view.setUint32(28, 16000 * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(view, 36, "data");
+    view.setUint32(40, downsampled.length * 2, true);
+
+    let wavOffset = 44;
+    for (let idx = 0; idx < downsampled.length; idx += 1) {
+      const sample = Math.max(-1, Math.min(1, downsampled[idx]));
+      view.setInt16(wavOffset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      wavOffset += 2;
+    }
+
+    return buffer;
+  }
+
+  _startBrowserVoiceRecognition() {
     this._voiceBackendBlocked = false;
     this._voiceStopRequested = false;
     const allowBraveWebSpeech =
@@ -683,9 +949,15 @@ class OpenClawChatCard extends HTMLElement {
   }
 
   _stopVoiceRecognition() {
+    if (this._assistRecordingActive) {
+      this._stopAssistSttRecognition(true);
+    }
+
     if (this._recognition) {
-      this._voiceStopRequested = true;
-      this._recognition.abort();
+      if (this._recognition.engine !== "assist_stt") {
+        this._voiceStopRequested = true;
+        this._recognition.abort();
+      }
       this._recognition = null;
     }
     if (this._voiceRetryTimer) {
@@ -725,6 +997,13 @@ class OpenClawChatCard extends HTMLElement {
   }
 
   _toggleVoiceMode() {
+    if (!this._isVoiceMode && this._getVoiceProvider() === "assist_stt") {
+      this._voiceStatus =
+        "Continuous voice mode is only available with browser voice provider.";
+      this._render();
+      return;
+    }
+
     this._isVoiceMode = !this._isVoiceMode;
     if (this._isVoiceMode) {
       this._startVoiceRecognition();

@@ -47,6 +47,7 @@ from .const import (
     CONF_WAKE_WORD_ENABLED,
     CONF_ALWAYS_VOICE_MODE,
     CONF_ALLOW_BRAVE_WEBSPEECH,
+    CONF_VOICE_PROVIDER,
     CONTEXT_STRATEGY_TRUNCATE,
     DEFAULT_CONTEXT_MAX_CHARS,
     DEFAULT_CONTEXT_STRATEGY,
@@ -56,6 +57,7 @@ from .const import (
     DEFAULT_WAKE_WORD_ENABLED,
     DEFAULT_ALWAYS_VOICE_MODE,
     DEFAULT_ALLOW_BRAVE_WEBSPEECH,
+    DEFAULT_VOICE_PROVIDER,
     DOMAIN,
     EVENT_MESSAGE_RECEIVED,
     OPENCLAW_CONFIG_REL_PATH,
@@ -76,7 +78,7 @@ _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 # URL at which the card JS is served (registered via register_static_path)
 _CARD_STATIC_URL = f"/openclaw/{_CARD_FILENAME}"
 # Versioned URL used for Lovelace resource registration to avoid stale browser cache
-_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.30"
+_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.32"
 
 OpenClawConfigEntry = ConfigEntry
 
@@ -688,6 +690,10 @@ def _async_register_websocket_api(hass: HomeAssistant) -> None:
                 CONF_ALLOW_BRAVE_WEBSPEECH: options.get(
                     CONF_ALLOW_BRAVE_WEBSPEECH,
                     DEFAULT_ALLOW_BRAVE_WEBSPEECH,
+                ),
+                CONF_VOICE_PROVIDER: options.get(
+                    CONF_VOICE_PROVIDER,
+                    DEFAULT_VOICE_PROVIDER,
                 ),
                 "language": hass.config.language,
             },

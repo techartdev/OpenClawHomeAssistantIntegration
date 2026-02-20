@@ -2,6 +2,16 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.32] - 2026-02-20
+
+### Added
+- Added configurable voice input provider option: `browser` or `assist_stt`.
+- Chat card now supports Home Assistant STT transcription mode (`assist_stt`) for manual mic input.
+
+### Changed
+- Voice provider is now exposed through integration settings websocket payload and card configuration handling.
+- Continuous voice mode remains available only for browser voice provider.
+
 ## [0.1.31] - 2026-02-20
 
 ### Fixed
