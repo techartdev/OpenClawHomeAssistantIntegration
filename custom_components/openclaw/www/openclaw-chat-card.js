@@ -59,6 +59,7 @@ class OpenClawChatCard extends HTMLElement {
     this._recognition = null;
     this._eventUnsubscribe = null;
     this._thinkingTimer = null;
+    this._historySyncRetryTimer = null;
     this._wakeWordEnabled = false;
     this._wakeWord = "hey openclaw";
     this._alwaysVoiceMode = false;
@@ -114,6 +115,10 @@ class OpenClawChatCard extends HTMLElement {
     this._unsubscribeEvents();
     this._stopVoiceRecognition();
     this._clearThinkingTimer();
+    if (this._historySyncRetryTimer) {
+      clearTimeout(this._historySyncRetryTimer);
+      this._historySyncRetryTimer = null;
+    }
   }
 
   // ── Event subscription ──────────────────────────────────────────────
@@ -217,7 +222,7 @@ class OpenClawChatCard extends HTMLElement {
     }
   }
 
-  async _syncHistoryFromBackend() {
+  async _syncHistoryFromBackend(retries = 6) {
     if (!this._hass) return;
 
     const sessionId = this._getSessionId();
@@ -244,7 +249,17 @@ class OpenClawChatCard extends HTMLElement {
       );
       if (!validMessages.length) return;
 
-      if (validMessages.length > this._messages.length) {
+      const shouldReplace =
+        validMessages.length > this._messages.length ||
+        (validMessages.length === this._messages.length &&
+          validMessages.length > 0 &&
+          this._messages.length > 0 &&
+          (validMessages[validMessages.length - 1].content !==
+            this._messages[this._messages.length - 1].content ||
+            validMessages[validMessages.length - 1].timestamp !==
+              this._messages[this._messages.length - 1].timestamp));
+
+      if (shouldReplace) {
         this._messages = validMessages;
         this._isProcessing = false;
         this._clearThinkingTimer();
@@ -254,6 +269,14 @@ class OpenClawChatCard extends HTMLElement {
       }
     } catch (err) {
       console.debug("OpenClaw: history sync skipped:", err);
+      if (retries > 0) {
+        if (this._historySyncRetryTimer) {
+          clearTimeout(this._historySyncRetryTimer);
+        }
+        this._historySyncRetryTimer = setTimeout(() => {
+          this._syncHistoryFromBackend(retries - 1);
+        }, 1500);
+      }
     }
   }
 

@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.17] - 2026-02-20
+
+### Fixed
+- Improved chat history recovery after leaving and returning to dashboard.
+- Card now retries backend history sync when websocket is not yet ready.
+- History merge now updates when message count is unchanged but latest message content/timestamp differs.
+
 ## [0.1.16] - 2026-02-20
 
 ### Added
