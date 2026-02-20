@@ -18,7 +18,7 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import OpenClawApiClient, OpenClawAuthError, OpenClawConnectionError
+from .api import OpenClawApiClient, OpenClawApiError, OpenClawAuthError, OpenClawConnectionError
 from .const import (
     ADDON_CONFIGS_ROOT,
     ADDON_SLUG,
@@ -163,6 +163,15 @@ async def _async_try_discover_addon(hass: HomeAssistant) -> dict[str, Any] | Non
         )
         return None
 
+    # Warn early if the OpenAI-compatible API is disabled — /v1/models will return
+    # HTML and the connection probe will fail with a misleading error.
+    if not addon_options.get("enable_openai_api", False):
+        _LOGGER.warning(
+            "Addon option 'enable_openai_api' is false. "
+            "The integration requires this to be enabled. "
+            "Enable it in the addon configuration and restart the addon."
+        )
+
     # ── Step 2: Find the addon config directory on the filesystem ────
     config_dir = await hass.async_add_executor_job(_find_addon_config_dir)
     if not config_dir:
@@ -270,6 +279,10 @@ class OpenClawConfigFlow(ConfigFlow, domain=DOMAIN):
             except OpenClawConnectionError:
                 connected = False
                 errors["base"] = "cannot_connect"
+            except OpenClawApiError as err:
+                connected = False
+                errors["base"] = "openai_api_disabled"
+                _LOGGER.warning("Gateway API error during connection check: %s", err)
 
             if connected:
                 return self.async_create_entry(
@@ -313,6 +326,10 @@ class OpenClawConfigFlow(ConfigFlow, domain=DOMAIN):
             except OpenClawConnectionError:
                 errors["base"] = "cannot_connect"
                 connected = False
+            except OpenClawApiError as err:
+                errors["base"] = "openai_api_disabled"
+                connected = False
+                _LOGGER.warning("Gateway API error during connection check: %s", err)
 
             if connected:
                 return self.async_create_entry(

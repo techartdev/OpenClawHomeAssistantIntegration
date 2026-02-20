@@ -292,20 +292,22 @@ class OpenClawApiClient:
         Uses the /v1/models endpoint as a lightweight probe — the only
         consistently available GET endpoint on the OpenClaw gateway.
 
+        The /v1/models endpoint requires 'enable_openai_api' to be enabled in
+        the addon configuration. If the gateway returns HTML instead of JSON,
+        the OpenAI-compatible API is likely disabled and an OpenClawApiError
+        is raised so the caller can surface a meaningful error.
+
         Returns:
             True if connected and authenticated.
 
         Raises:
-            OpenClawAuthError: If authentication fails (re-raised so callers
-                can distinguish bad tokens from unreachable gateways).
+            OpenClawAuthError: If authentication fails.
+            OpenClawApiError: If the gateway returns an unexpected response
+                (e.g. HTML when enable_openai_api is disabled).
+            OpenClawConnectionError: If the gateway is unreachable.
         """
-        try:
-            await self.async_get_models()
-            return True
-        except OpenClawAuthError:
-            raise
-        except OpenClawApiError:
-            return False
+        await self.async_get_models()
+        return True
 
     async def async_close(self) -> None:
         """Close the HTTP session."""

@@ -2,6 +2,24 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.3] - 2026-02-20
+
+### Fixed
+- `async_check_connection()` no longer silently swallows `OpenClawApiError`.
+  Previously any API-level error (e.g. gateway returning HTML) was caught and
+  converted to a generic "Cannot connect" message with no indication of the
+  real cause. The error is now propagated to the config flow.
+- Config flow now catches `OpenClawApiError` separately and shows a clear,
+  actionable error message: **"openai_api_disabled"** — pointing the user to
+  enable `enable_openai_api` in the addon settings and restart.
+- Auto-discovery now logs a `WARNING` when `enable_openai_api` is `false` in
+  the addon options, making the issue visible in the HA log before setup fails.
+
+### Changed
+- The `enable_openai_api` addon option (default `false`) must be `true` for the
+  integration to connect. The `/v1/models` probe endpoint requires the
+  OpenAI-compatible API layer to be active.
+
 ## [0.1.2] - 2026-02-20
 
 ### Fixed
