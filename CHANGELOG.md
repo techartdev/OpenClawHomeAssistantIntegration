@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.23] - 2026-02-20
+
+### Fixed
+- Improved handling for repeated `SpeechRecognition` `network` failures in Brave-like browsers.
+- Added clear in-card status when browser speech backend appears blocked, and stopped endless retry loops in that case.
+- Kept automatic locale fallback retry for transient speech-service issues.
+
 ## [0.1.22] - 2026-02-20
 
 ### Fixed

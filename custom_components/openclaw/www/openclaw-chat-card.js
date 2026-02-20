@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.2.2";
+const CARD_VERSION = "0.2.3";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -66,7 +66,9 @@ class OpenClawChatCard extends HTMLElement {
     this._voiceStatus = "";
     this._voiceRetryTimer = null;
     this._voiceRetryCount = 0;
+    this._voiceNetworkErrorCount = 0;
     this._speechLangOverride = null;
+    this._voiceBackendBlocked = false;
   }
 
   // ── HA card interface ───────────────────────────────────────────────
@@ -442,7 +444,20 @@ class OpenClawChatCard extends HTMLElement {
     return this._normalizeSpeechLanguage(preferred);
   }
 
+  _isLikelyBraveBrowser() {
+    const ua = (navigator.userAgent || "").toLowerCase();
+    const uaDataBrands = navigator.userAgentData?.brands || [];
+    const brandMatch = uaDataBrands.some((brand) =>
+      String(brand?.brand || "")
+        .toLowerCase()
+        .includes("brave")
+    );
+    return brandMatch || ua.includes("brave") || !!navigator.brave;
+  }
+
   _startVoiceRecognition() {
+    this._voiceBackendBlocked = false;
+
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
       console.warn("OpenClaw: Speech recognition not supported in this browser");
       this._voiceStatus = "Speech recognition not supported by this browser.";
@@ -500,12 +515,22 @@ class OpenClawChatCard extends HTMLElement {
       console.error("OpenClaw: Speech recognition error:", event.error);
       const err = event?.error || "unknown";
       if (err === "network") {
-        this._voiceStatus =
-          "Voice network error: browser speech service unavailable. Retrying with fallback locale…";
-
+        this._voiceNetworkErrorCount += 1;
         const browserLocale = this._normalizeSpeechLanguage(navigator.language || "en-US");
         if (!this._speechLangOverride && browserLocale !== this._recognition.lang) {
           this._speechLangOverride = browserLocale;
+          this._voiceStatus =
+            "Voice network error: browser speech service unavailable. Retrying with fallback locale…";
+        } else {
+          const braveLikely = this._isLikelyBraveBrowser();
+          if (braveLikely && this._voiceNetworkErrorCount >= 2) {
+            this._voiceBackendBlocked = true;
+            this._voiceStatus =
+              "Brave speech backend blocked (network error). Voice input is unavailable in this browser session. Use Chrome/Edge for voice, or continue with text input.";
+          } else {
+            this._voiceStatus =
+              "Voice network error: browser speech service unavailable. Retrying…";
+          }
         }
       } else if (err === "not-allowed") {
         this._voiceStatus = "Microphone access denied. Allow mic permission for this site.";
@@ -515,7 +540,7 @@ class OpenClawChatCard extends HTMLElement {
         this._voiceStatus = `Voice error: ${err}`;
       }
 
-      if (["network", "audio-capture", "no-speech"].includes(err)) {
+      if (["network", "audio-capture", "no-speech"].includes(err) && !this._voiceBackendBlocked) {
         this._scheduleVoiceRetry();
       }
       this._render();
@@ -549,11 +574,13 @@ class OpenClawChatCard extends HTMLElement {
       this._voiceRetryTimer = null;
     }
     this._voiceRetryCount = 0;
+    this._voiceNetworkErrorCount = 0;
     this._isVoiceMode = false;
     this._voiceStatus = "";
   }
 
   _scheduleVoiceRetry() {
+    if (this._voiceBackendBlocked) return;
     if (!this._isVoiceMode && !this._speechLangOverride) return;
     if (this._voiceRetryCount >= 6) {
       this._voiceStatus =
