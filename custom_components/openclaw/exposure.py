@@ -10,20 +10,26 @@ from homeassistant.core import HomeAssistant
 
 def build_exposed_entities_context(
     hass: HomeAssistant,
-    assistant: str | None = "assist",
+    assistant: str | None = "conversation",
     max_entities: int = 250,
 ) -> str | None:
     """Build a compact prompt block of entities exposed to an assistant.
 
     Uses Home Assistant's built-in expose rules (Settings -> Voice assistants -> Expose).
     """
-    assistant_id = assistant or "assist"
+    assistant_id = assistant or "conversation"
 
-    exposed_states = [
-        state
-        for state in hass.states.async_all()
-        if async_should_expose(hass, assistant_id, state.entity_id)
-    ]
+    def _collect_for(assistant_value: str) -> list:
+        return [
+            state
+            for state in hass.states.async_all()
+            if async_should_expose(hass, assistant_value, state.entity_id)
+        ]
+
+    exposed_states = _collect_for(assistant_id)
+
+    if not exposed_states and assistant_id != "conversation":
+        exposed_states = _collect_for("conversation")
 
     if not exposed_states:
         return None
@@ -55,3 +61,28 @@ def build_exposed_entities_context(
     )
 
     return "\n".join(lines)
+
+
+def apply_context_policy(
+    context_text: str | None,
+    max_chars: int,
+    strategy: str,
+) -> str | None:
+    """Apply context truncation policy to an optional prompt block."""
+    if not context_text:
+        return None
+
+    if max_chars <= 0:
+        return None
+
+    if len(context_text) <= max_chars:
+        return context_text
+
+    if strategy == "clear":
+        return None
+
+    marker = "\n[Context truncated to fit configured max length]\n"
+    available = max_chars - len(marker)
+    if available <= 0:
+        return context_text[-max_chars:]
+    return marker + context_text[-available:]

@@ -31,6 +31,23 @@
       "already_configured": "OpenClaw is already configured."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OpenClaw Options",
+        "description": "Configure context and tool-calling behavior.",
+        "data": {
+          "include_exposed_context": "Include exposed entities context",
+          "context_max_chars": "Max context characters",
+          "context_strategy": "When context exceeds max",
+          "enable_tool_calls": "Enable tool calls (execute services)",
+          "wake_word_enabled": "Require wake word",
+          "wake_word": "Wake word",
+          "always_voice_mode": "Always-on voice mode"
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "status": {

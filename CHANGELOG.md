@@ -2,6 +2,41 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.16] - 2026-02-20
+
+### Added
+- Added configurable wake-word support in integration options.
+- Added optional always-on voice mode in integration options.
+- Added websocket settings endpoint (`openclaw/get_settings`) used by the chat card to apply integration-level voice settings.
+
+### Changed
+- Chat card voice recognition now supports two modes:
+  - Manual voice input without wake word
+  - Continuous listening with required wake word
+
+## [0.1.15] - 2026-02-20
+
+### Added
+- Added integration options for prompt/context behavior:
+  - Include exposed-entities context
+  - Max context characters
+  - Context overflow strategy (`truncate` or `clear`)
+  - Enable tool calls (`execute_service` / `execute_services`)
+
+### Changed
+- Service and conversation requests now apply configurable context policy before sending prompts.
+- Optional tool-call execution now mirrors Extended OpenAI-style service tool usage and feeds execution results back into a follow-up model response.
+
+## [0.1.14] - 2026-02-20
+
+### Fixed
+- Fixed Assist exposure context lookup to use Home Assistant's conversation assistant identifier (`conversation`) instead of `assist`, which could result in empty exposed-entity context.
+- Added backend in-memory chat history and websocket endpoint (`openclaw/get_history`) so card responses are recoverable after leaving and returning to the dashboard.
+- Normalized default session handling to `default` for service calls/events/history, avoiding session mismatch drops.
+
+### Changed
+- Chat card now syncs history from backend on mount/initialization to restore missed assistant messages.
+
 ## [0.1.13] - 2026-02-20
 
 ### Added

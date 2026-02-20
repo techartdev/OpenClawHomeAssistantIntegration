@@ -6,12 +6,14 @@ Sets up the OpenClaw integration: API client, coordinator, platforms, and servic
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.components import websocket_api
 
 try:
     from homeassistant.components.lovelace.const import LOVELACE_DATA
@@ -36,6 +38,21 @@ from .const import (
     CONF_GATEWAY_PORT,
     CONF_GATEWAY_TOKEN,
     CONF_USE_SSL,
+    CONF_CONTEXT_MAX_CHARS,
+    CONF_CONTEXT_STRATEGY,
+    CONF_ENABLE_TOOL_CALLS,
+    CONF_INCLUDE_EXPOSED_CONTEXT,
+    CONF_WAKE_WORD,
+    CONF_WAKE_WORD_ENABLED,
+    CONF_ALWAYS_VOICE_MODE,
+    CONTEXT_STRATEGY_TRUNCATE,
+    DEFAULT_CONTEXT_MAX_CHARS,
+    DEFAULT_CONTEXT_STRATEGY,
+    DEFAULT_ENABLE_TOOL_CALLS,
+    DEFAULT_INCLUDE_EXPOSED_CONTEXT,
+    DEFAULT_WAKE_WORD,
+    DEFAULT_WAKE_WORD_ENABLED,
+    DEFAULT_ALWAYS_VOICE_MODE,
     DOMAIN,
     EVENT_MESSAGE_RECEIVED,
     OPENCLAW_CONFIG_REL_PATH,
@@ -44,9 +61,11 @@ from .const import (
     SERVICE_SEND_MESSAGE,
 )
 from .coordinator import OpenClawCoordinator
-from .exposure import build_exposed_entities_context
+from .exposure import apply_context_policy, build_exposed_entities_context
 
 _LOGGER = logging.getLogger(__name__)
+
+_MAX_CHAT_HISTORY = 200
 
 # Path to the chat card JS inside the integration package (custom_components/openclaw/www/)
 _CARD_FILENAME = "openclaw-chat-card.js"
@@ -98,6 +117,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenClawConfigEntry) -> 
         "client": client,
         "coordinator": coordinator,
         "addon_config_path": addon_config_path,
+        "entry": entry,
     }
 
     # First data fetch — if it fails the coordinator marks entities unavailable
@@ -107,6 +127,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenClawConfigEntry) -> 
 
     # Register services (once, idempotent)
     _async_register_services(hass)
+    _async_register_websocket_api(hass)
 
     # Register the frontend card resource
     hass.async_create_task(_async_register_frontend(hass))
@@ -303,7 +324,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
     async def handle_send_message(call: ServiceCall) -> None:
         """Handle the openclaw.send_message service call."""
         message: str = call.data[ATTR_MESSAGE]
-        session_id: str | None = call.data.get(ATTR_SESSION_ID)
+        session_id: str = call.data.get(ATTR_SESSION_ID) or "default"
 
         entry_data = _get_first_entry_data(hass)
         if not entry_data:
@@ -312,14 +333,47 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
         client: OpenClawApiClient = entry_data["client"]
         coordinator: OpenClawCoordinator = entry_data["coordinator"]
+        entry: ConfigEntry = entry_data["entry"]
+        options = entry.options
 
         try:
-            system_prompt = build_exposed_entities_context(hass, assistant="assist")
+            include_context = options.get(
+                CONF_INCLUDE_EXPOSED_CONTEXT,
+                DEFAULT_INCLUDE_EXPOSED_CONTEXT,
+            )
+            max_chars = int(
+                options.get(CONF_CONTEXT_MAX_CHARS, DEFAULT_CONTEXT_MAX_CHARS)
+            )
+            strategy = options.get(CONF_CONTEXT_STRATEGY, DEFAULT_CONTEXT_STRATEGY)
+            if strategy not in {"clear", CONTEXT_STRATEGY_TRUNCATE}:
+                strategy = DEFAULT_CONTEXT_STRATEGY
+
+            raw_context = (
+                build_exposed_entities_context(hass, assistant="conversation")
+                if include_context
+                else None
+            )
+            system_prompt = apply_context_policy(raw_context, max_chars, strategy)
+
+            _append_chat_history(hass, session_id, "user", message)
             response = await client.async_send_message(
                 message=message,
                 session_id=session_id,
                 system_prompt=system_prompt,
             )
+
+            if options.get(CONF_ENABLE_TOOL_CALLS, DEFAULT_ENABLE_TOOL_CALLS):
+                tool_results = await _async_execute_tool_calls(hass, response)
+                if tool_results:
+                    response = await client.async_send_message(
+                        message=(
+                            "Tool execution results:\n"
+                            + "\n".join(f"- {line}" for line in tool_results)
+                            + "\nRespond to the user based on these results."
+                        ),
+                        session_id=session_id,
+                        system_prompt=system_prompt,
+                    )
 
             assistant_message = _extract_assistant_message(response)
             model_used = response.get("model", "unknown")
@@ -331,6 +385,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                     list(response.keys()),
                 )
 
+            _append_chat_history(hass, session_id, "assistant", assistant_message)
             hass.bus.async_fire(
                 EVENT_MESSAGE_RECEIVED,
                 {
@@ -344,6 +399,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
         except OpenClawApiError as err:
             _LOGGER.error("Failed to send message to OpenClaw: %s", err)
+            _append_chat_history(hass, session_id, "assistant", f"OpenClaw error: {err}")
             hass.bus.async_fire(
                 EVENT_MESSAGE_RECEIVED,
                 {
@@ -358,7 +414,11 @@ def _async_register_services(hass: HomeAssistant) -> None:
         """Handle the openclaw.clear_history service call."""
         session_id: str | None = call.data.get(ATTR_SESSION_ID)
         _LOGGER.info("Clear history requested (session=%s)", session_id or "all")
-        # TODO: Implement when gateway exposes a session-clear endpoint
+        store = _get_chat_history_store(hass)
+        if session_id:
+            store.pop(session_id, None)
+        else:
+            store.clear()
 
     hass.services.async_register(
         DOMAIN,
@@ -433,3 +493,171 @@ def _extract_text_recursive(value: Any, depth: int = 0) -> str | None:
 def _extract_assistant_message(response: dict[str, Any]) -> str | None:
     """Extract assistant text from modern/legacy OpenAI-compatible responses."""
     return _extract_text_recursive(response)
+
+
+def _extract_tool_calls(response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract OpenAI-style tool calls from a response payload."""
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return []
+
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    if not isinstance(message, dict):
+        return []
+
+    tool_calls = message.get("tool_calls")
+    if not isinstance(tool_calls, list):
+        return []
+
+    valid_calls: list[dict[str, Any]] = []
+    for call in tool_calls:
+        if isinstance(call, dict):
+            valid_calls.append(call)
+    return valid_calls
+
+
+async def _async_execute_tool_calls(
+    hass: HomeAssistant,
+    response: dict[str, Any],
+) -> list[str]:
+    """Execute supported tool calls and return result lines."""
+    results: list[str] = []
+    tool_calls = _extract_tool_calls(response)
+
+    for call in tool_calls:
+        function_data = call.get("function")
+        if not isinstance(function_data, dict):
+            continue
+
+        function_name = function_data.get("name")
+        arguments = function_data.get("arguments")
+
+        if function_name not in {"execute_service", "execute_services"}:
+            results.append(f"Skipped unsupported tool '{function_name}'")
+            continue
+
+        if not isinstance(arguments, str):
+            results.append("Skipped tool call with invalid arguments format")
+            continue
+
+        try:
+            parsed = json.loads(arguments)
+        except json.JSONDecodeError:
+            results.append("Skipped tool call due to invalid JSON arguments")
+            continue
+
+        services_list = parsed.get("list") if isinstance(parsed, dict) else None
+        if not isinstance(services_list, list):
+            results.append("Skipped tool call without 'list' payload")
+            continue
+
+        for item in services_list:
+            if not isinstance(item, dict):
+                continue
+            domain = item.get("domain")
+            service = item.get("service")
+            service_data = item.get("service_data", {})
+
+            if not isinstance(domain, str) or not isinstance(service, str):
+                results.append("Skipped invalid service item (missing domain/service)")
+                continue
+
+            if not isinstance(service_data, dict):
+                service_data = {}
+
+            try:
+                await hass.services.async_call(
+                    domain,
+                    service,
+                    service_data,
+                    blocking=True,
+                )
+                results.append(f"Executed {domain}.{service}")
+            except Exception as err:  # noqa: BLE001
+                results.append(f"Failed {domain}.{service}: {err}")
+
+    return results
+
+
+def _get_chat_history_store(hass: HomeAssistant) -> dict[str, list[dict[str, str]]]:
+    """Return in-memory per-session chat history store."""
+    store_key = f"{DOMAIN}_chat_history"
+    store = hass.data.get(store_key)
+    if store is None:
+        store = {}
+        hass.data[store_key] = store
+    return store
+
+
+def _append_chat_history(hass: HomeAssistant, session_id: str, role: str, content: str) -> None:
+    """Append a message to in-memory chat history."""
+    store = _get_chat_history_store(hass)
+    history = store.setdefault(session_id, [])
+    history.append(
+        {
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    if len(history) > _MAX_CHAT_HISTORY:
+        del history[:-_MAX_CHAT_HISTORY]
+
+
+@callback
+def _async_register_websocket_api(hass: HomeAssistant) -> None:
+    """Register websocket API for chat history retrieval."""
+    key = f"{DOMAIN}_ws_registered"
+    if hass.data.get(key):
+        return
+    hass.data[key] = True
+
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/get_history",
+            vol.Optional("session_id"): cv.string,
+        }
+    )
+    @callback
+    def websocket_get_history(
+        hass: HomeAssistant,
+        connection: websocket_api.ActiveConnection,
+        msg: dict[str, Any],
+    ) -> None:
+        """Return chat history for a session."""
+        session_id = msg.get("session_id") or "default"
+        history = _get_chat_history_store(hass).get(session_id, [])
+        connection.send_result(msg["id"], {"session_id": session_id, "messages": history})
+
+    websocket_api.async_register_command(hass, websocket_get_history)
+
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"{DOMAIN}/get_settings",
+        }
+    )
+    @callback
+    def websocket_get_settings(
+        hass: HomeAssistant,
+        connection: websocket_api.ActiveConnection,
+        msg: dict[str, Any],
+    ) -> None:
+        """Return frontend-related integration settings."""
+        entry_data = _get_first_entry_data(hass)
+        options = entry_data.get("entry").options if entry_data and entry_data.get("entry") else {}
+        connection.send_result(
+            msg["id"],
+            {
+                CONF_WAKE_WORD_ENABLED: options.get(
+                    CONF_WAKE_WORD_ENABLED,
+                    DEFAULT_WAKE_WORD_ENABLED,
+                ),
+                CONF_WAKE_WORD: options.get(CONF_WAKE_WORD, DEFAULT_WAKE_WORD),
+                CONF_ALWAYS_VOICE_MODE: options.get(
+                    CONF_ALWAYS_VOICE_MODE,
+                    DEFAULT_ALWAYS_VOICE_MODE,
+                ),
+            },
+        )
+
+    websocket_api.async_register_command(hass, websocket_get_settings)

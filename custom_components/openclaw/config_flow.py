@@ -14,7 +14,7 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -28,8 +28,24 @@ from .const import (
     CONF_GATEWAY_PORT,
     CONF_GATEWAY_TOKEN,
     CONF_USE_SSL,
+    CONF_CONTEXT_MAX_CHARS,
+    CONF_CONTEXT_STRATEGY,
+    CONF_ENABLE_TOOL_CALLS,
+    CONF_INCLUDE_EXPOSED_CONTEXT,
+    CONF_WAKE_WORD,
+    CONF_WAKE_WORD_ENABLED,
+    CONF_ALWAYS_VOICE_MODE,
+    CONTEXT_STRATEGY_CLEAR,
+    CONTEXT_STRATEGY_TRUNCATE,
     DEFAULT_GATEWAY_HOST,
     DEFAULT_GATEWAY_PORT,
+    DEFAULT_CONTEXT_MAX_CHARS,
+    DEFAULT_CONTEXT_STRATEGY,
+    DEFAULT_ENABLE_TOOL_CALLS,
+    DEFAULT_INCLUDE_EXPOSED_CONTEXT,
+    DEFAULT_WAKE_WORD,
+    DEFAULT_WAKE_WORD_ENABLED,
+    DEFAULT_ALWAYS_VOICE_MODE,
     DOMAIN,
     OPENCLAW_CONFIG_REL_PATH,
 )
@@ -237,6 +253,11 @@ class OpenClawConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> OpenClawOptionsFlow:
+        """Get options flow for this handler."""
+        return OpenClawOptionsFlow(config_entry)
+
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._discovered: dict[str, Any] | None = None
@@ -363,4 +384,77 @@ class OpenClawConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+
+class OpenClawOptionsFlow(OptionsFlow):
+    """Handle OpenClaw options."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize options flow."""
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage integration options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        options = self._config_entry.options
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_INCLUDE_EXPOSED_CONTEXT,
+                        default=options.get(
+                            CONF_INCLUDE_EXPOSED_CONTEXT,
+                            DEFAULT_INCLUDE_EXPOSED_CONTEXT,
+                        ),
+                    ): bool,
+                    vol.Optional(
+                        CONF_CONTEXT_MAX_CHARS,
+                        default=options.get(
+                            CONF_CONTEXT_MAX_CHARS,
+                            DEFAULT_CONTEXT_MAX_CHARS,
+                        ),
+                    ): vol.All(int, vol.Range(min=1000, max=200000)),
+                    vol.Optional(
+                        CONF_CONTEXT_STRATEGY,
+                        default=options.get(
+                            CONF_CONTEXT_STRATEGY,
+                            DEFAULT_CONTEXT_STRATEGY,
+                        ),
+                    ): vol.In([CONTEXT_STRATEGY_TRUNCATE, CONTEXT_STRATEGY_CLEAR]),
+                    vol.Optional(
+                        CONF_ENABLE_TOOL_CALLS,
+                        default=options.get(
+                            CONF_ENABLE_TOOL_CALLS,
+                            DEFAULT_ENABLE_TOOL_CALLS,
+                        ),
+                    ): bool,
+                    vol.Optional(
+                        CONF_WAKE_WORD_ENABLED,
+                        default=options.get(
+                            CONF_WAKE_WORD_ENABLED,
+                            DEFAULT_WAKE_WORD_ENABLED,
+                        ),
+                    ): bool,
+                    vol.Optional(
+                        CONF_WAKE_WORD,
+                        default=options.get(
+                            CONF_WAKE_WORD,
+                            DEFAULT_WAKE_WORD,
+                        ),
+                    ): str,
+                    vol.Optional(
+                        CONF_ALWAYS_VOICE_MODE,
+                        default=options.get(
+                            CONF_ALWAYS_VOICE_MODE,
+                            DEFAULT_ALWAYS_VOICE_MODE,
+                        ),
+                    ): bool,
+                }
+            ),
         )

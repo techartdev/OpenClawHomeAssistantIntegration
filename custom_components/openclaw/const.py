@@ -23,6 +23,26 @@ CONF_GATEWAY_TOKEN = "gateway_token"
 CONF_USE_SSL = "use_ssl"
 CONF_ADDON_CONFIG_PATH = "addon_config_path"
 
+# Options
+CONF_INCLUDE_EXPOSED_CONTEXT = "include_exposed_context"
+CONF_CONTEXT_MAX_CHARS = "context_max_chars"
+CONF_CONTEXT_STRATEGY = "context_strategy"
+CONF_ENABLE_TOOL_CALLS = "enable_tool_calls"
+CONF_WAKE_WORD_ENABLED = "wake_word_enabled"
+CONF_WAKE_WORD = "wake_word"
+CONF_ALWAYS_VOICE_MODE = "always_voice_mode"
+
+DEFAULT_INCLUDE_EXPOSED_CONTEXT = True
+DEFAULT_CONTEXT_MAX_CHARS = 13000
+DEFAULT_CONTEXT_STRATEGY = "truncate"
+DEFAULT_ENABLE_TOOL_CALLS = False
+DEFAULT_WAKE_WORD_ENABLED = False
+DEFAULT_WAKE_WORD = "hey openclaw"
+DEFAULT_ALWAYS_VOICE_MODE = False
+
+CONTEXT_STRATEGY_TRUNCATE = "truncate"
+CONTEXT_STRATEGY_CLEAR = "clear"
+
 # Coordinator data keys
 DATA_STATUS = "status"
 DATA_MODEL = "model"

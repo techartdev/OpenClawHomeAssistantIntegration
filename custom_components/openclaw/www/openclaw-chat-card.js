@@ -59,6 +59,9 @@ class OpenClawChatCard extends HTMLElement {
     this._recognition = null;
     this._eventUnsubscribe = null;
     this._thinkingTimer = null;
+    this._wakeWordEnabled = false;
+    this._wakeWord = "hey openclaw";
+    this._alwaysVoiceMode = false;
   }
 
   // ── HA card interface ───────────────────────────────────────────────
@@ -91,6 +94,8 @@ class OpenClawChatCard extends HTMLElement {
     this._hass = hass;
     if (firstSet) {
       this._subscribeToEvents();
+      this._syncHistoryFromBackend();
+      this._loadIntegrationSettings();
       this._render();
     }
   }
@@ -100,6 +105,8 @@ class OpenClawChatCard extends HTMLElement {
   }
 
   connectedCallback() {
+    this._syncHistoryFromBackend();
+    this._loadIntegrationSettings();
     this._render();
   }
 
@@ -136,7 +143,7 @@ class OpenClawChatCard extends HTMLElement {
     if (!data || !data.message) return;
 
     // Check if this event is for our session
-    const sessionId = this._config.session_id || "default";
+    const sessionId = this._getSessionId();
     if (data.session_id && data.session_id !== sessionId) return;
 
     // If we're waiting for a response, update the last "thinking" message
@@ -179,8 +186,12 @@ class OpenClawChatCard extends HTMLElement {
   // ── Message persistence ──────────────────────────────────────────────
 
   _getStorageKey() {
-    const session = this._config.session_id || "default";
+    const session = this._getSessionId();
     return `${STORAGE_PREFIX}${session}`;
+  }
+
+  _getSessionId() {
+    return this._config.session_id || "default";
   }
 
   _persistMessages() {
@@ -203,6 +214,73 @@ class OpenClawChatCard extends HTMLElement {
     } catch (e) {
       // Corrupted data — start fresh
       this._messages = [];
+    }
+  }
+
+  async _syncHistoryFromBackend() {
+    if (!this._hass) return;
+
+    const sessionId = this._getSessionId();
+
+    try {
+      let result;
+      if (typeof this._hass.callWS === "function") {
+        result = await this._hass.callWS({
+          type: "openclaw/get_history",
+          session_id: sessionId,
+        });
+      } else {
+        result = await this._hass.connection.sendMessagePromise({
+          type: "openclaw/get_history",
+          session_id: sessionId,
+        });
+      }
+
+      const serverMessages = Array.isArray(result?.messages) ? result.messages : [];
+      if (!serverMessages.length) return;
+
+      const validMessages = serverMessages.filter(
+        (m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string"
+      );
+      if (!validMessages.length) return;
+
+      if (validMessages.length > this._messages.length) {
+        this._messages = validMessages;
+        this._isProcessing = false;
+        this._clearThinkingTimer();
+        this._persistMessages();
+        this._render();
+        this._scrollToBottom();
+      }
+    } catch (err) {
+      console.debug("OpenClaw: history sync skipped:", err);
+    }
+  }
+
+  async _loadIntegrationSettings() {
+    if (!this._hass) return;
+
+    try {
+      let result;
+      if (typeof this._hass.callWS === "function") {
+        result = await this._hass.callWS({ type: "openclaw/get_settings" });
+      } else {
+        result = await this._hass.connection.sendMessagePromise({
+          type: "openclaw/get_settings",
+        });
+      }
+
+      this._wakeWordEnabled = !!result?.wake_word_enabled;
+      this._wakeWord = (result?.wake_word || "hey openclaw").toString().trim().toLowerCase();
+      this._alwaysVoiceMode = !!result?.always_voice_mode;
+
+      if (this._alwaysVoiceMode && !this._isVoiceMode) {
+        this._isVoiceMode = true;
+        this._startVoiceRecognition();
+      }
+      this._render();
+    } catch (err) {
+      console.debug("OpenClaw: settings sync skipped:", err);
     }
   }
 
@@ -302,7 +380,26 @@ class OpenClawChatCard extends HTMLElement {
     this._recognition.onresult = (event) => {
       const result = event.results[event.results.length - 1];
       if (result.isFinal) {
-        const text = result[0].transcript;
+        const text = result[0].transcript?.trim();
+        if (!text) return;
+
+        if (this._wakeWordEnabled) {
+          const wake = this._wakeWord || "hey openclaw";
+          const lower = text.toLowerCase();
+          const wakePos = lower.indexOf(wake);
+          if (wakePos < 0) {
+            return;
+          }
+
+          let command = text.slice(wakePos + wake.length).trim();
+          command = command.replace(/^[,:;.!?\-]+\s*/, "");
+          if (!command) {
+            return;
+          }
+          this._sendMessage(command);
+          return;
+        }
+
         this._sendMessage(text);
       }
     };

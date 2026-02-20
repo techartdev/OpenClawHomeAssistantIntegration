@@ -21,12 +21,18 @@ from .const import (
     ATTR_MODEL,
     ATTR_SESSION_ID,
     ATTR_TIMESTAMP,
+    CONF_CONTEXT_MAX_CHARS,
+    CONF_CONTEXT_STRATEGY,
+    CONF_INCLUDE_EXPOSED_CONTEXT,
+    DEFAULT_CONTEXT_MAX_CHARS,
+    DEFAULT_CONTEXT_STRATEGY,
+    DEFAULT_INCLUDE_EXPOSED_CONTEXT,
     DATA_MODEL,
     DOMAIN,
     EVENT_MESSAGE_RECEIVED,
 )
 from .coordinator import OpenClawCoordinator
-from .exposure import build_exposed_entities_context
+from .exposure import apply_context_policy, build_exposed_entities_context
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -101,11 +107,24 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
 
         message = user_input.text
         conversation_id = user_input.conversation_id or "default"
-        assistant_id = getattr(user_input, "assistant", None) or "assist"
-        exposed_context = build_exposed_entities_context(
-            self.hass,
-            assistant=assistant_id,
+        assistant_id = "conversation"
+        options = self.entry.options
+        include_context = options.get(
+            CONF_INCLUDE_EXPOSED_CONTEXT,
+            DEFAULT_INCLUDE_EXPOSED_CONTEXT,
         )
+        max_chars = int(options.get(CONF_CONTEXT_MAX_CHARS, DEFAULT_CONTEXT_MAX_CHARS))
+        strategy = options.get(CONF_CONTEXT_STRATEGY, DEFAULT_CONTEXT_STRATEGY)
+
+        raw_context = (
+            build_exposed_entities_context(
+                self.hass,
+                assistant=assistant_id,
+            )
+            if include_context
+            else None
+        )
+        exposed_context = apply_context_policy(raw_context, max_chars, strategy)
         extra_system_prompt = getattr(user_input, "extra_system_prompt", None)
         system_prompt = "\n\n".join(
             part for part in (exposed_context, extra_system_prompt) if part

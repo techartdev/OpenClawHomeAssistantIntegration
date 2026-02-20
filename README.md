@@ -44,6 +44,18 @@ Configure this in Home Assistant:
 2. Open the **Expose** tab
 3. Select which entities are exposed to **Assist**
 
+## Advanced options
+
+Open **Settings → Devices & Services → OpenClaw → Configure** to tune:
+
+- Include exposed entities context
+- Max context characters
+- Context overflow strategy (`truncate` or `clear`)
+- Enable tool calls (execute HA services from model tool-call responses)
+- Require wake word
+- Wake word text (for example: `hey openclaw`)
+- Always-on voice mode (continuous listening while the card is open)
+
 ## Chat Card
 
 The chat card is registered automatically when the integration loads — no
