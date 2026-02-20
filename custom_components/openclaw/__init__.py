@@ -76,9 +76,9 @@ _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 # URL at which the card JS is served (registered via register_static_path)
 _CARD_STATIC_URL = f"/openclaw/{_CARD_FILENAME}"
 # Versioned URL used for Lovelace resource registration to avoid stale browser cache
-_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.26"
+_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.28"
 
-type OpenClawConfigEntry = ConfigEntry
+OpenClawConfigEntry = ConfigEntry
 
 
 # Service call schemas

@@ -14,7 +14,17 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+try:
+    from homeassistant.config_entries import (
+        ConfigEntry,
+        ConfigFlow,
+        ConfigFlowResult,
+        OptionsFlow,
+    )
+except ImportError:
+    from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+
+    ConfigFlowResult = dict[str, Any]
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 

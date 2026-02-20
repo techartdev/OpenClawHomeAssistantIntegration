@@ -2,6 +2,19 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.28] - 2026-02-20
+
+### Fixed
+- Treat `SpeechRecognition` `aborted` events as expected stop behavior (no error status/no noisy console error) when voice is intentionally stopped.
+- Added a stop-request guard to avoid restart/error churn during recognition shutdown.
+- Synchronized release versioning so manifest, frontend loader URL, and backend card resource URL all use the same cache-busting version.
+
+## [0.1.27] - 2026-02-20
+
+### Changed
+- Improved backward compatibility for older Home Assistant Core builds by removing Python 3.12-only type alias syntax in integration runtime code.
+- Added fallback import handling for `ConfigFlowResult` in config flow type hints.
+
 ## [0.1.26] - 2026-02-20
 
 ### Added

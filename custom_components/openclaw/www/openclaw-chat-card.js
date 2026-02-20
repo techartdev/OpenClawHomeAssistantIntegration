@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.2.6";
+const CARD_VERSION = "0.2.7";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -72,6 +72,7 @@ class OpenClawChatCard extends HTMLElement {
     this._integrationVoiceLanguage = null;
     this._allowBraveWebSpeechIntegration = false;
     this._voiceBackendBlocked = false;
+    this._voiceStopRequested = false;
   }
 
   // ── HA card interface ───────────────────────────────────────────────
@@ -491,6 +492,7 @@ class OpenClawChatCard extends HTMLElement {
 
   _startVoiceRecognition() {
     this._voiceBackendBlocked = false;
+    this._voiceStopRequested = false;
     const allowBraveWebSpeech =
       this._config.allow_brave_webspeech || this._allowBraveWebSpeechIntegration;
 
@@ -556,6 +558,13 @@ class OpenClawChatCard extends HTMLElement {
 
     this._recognition.onerror = (event) => {
       const err = event?.error || "unknown";
+      if (err === "aborted") {
+        if (this._voiceStopRequested) {
+          return;
+        }
+        console.debug("OpenClaw: Speech recognition aborted");
+        return;
+      }
       if (err === "network") {
         console.warn("OpenClaw: Speech recognition network error");
       } else {
@@ -594,6 +603,15 @@ class OpenClawChatCard extends HTMLElement {
     };
 
     this._recognition.onend = () => {
+      if (this._voiceStopRequested) {
+        this._voiceStopRequested = false;
+        if (!this._isVoiceMode) {
+          this._voiceStatus = "";
+          this._render();
+        }
+        return;
+      }
+
       if (this._isVoiceMode) {
         // Restart recognition in voice mode
         try {
@@ -613,6 +631,7 @@ class OpenClawChatCard extends HTMLElement {
 
   _stopVoiceRecognition() {
     if (this._recognition) {
+      this._voiceStopRequested = true;
       this._recognition.abort();
       this._recognition = null;
     }
