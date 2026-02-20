@@ -1,0 +1,14 @@
+{
+  "domain": "openclaw",
+  "name": "OpenClaw",
+  "codeowners": ["@techartdev"],
+  "config_flow": true,
+  "documentation": "https://github.com/techartdev/OpenClawHomeAssistant",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/techartdev/OpenClawHomeAssistant/issues",
+  "requirements": [],
+  "version": "0.1.0",
+  "dependencies": ["conversation"],
+  "after_dependencies": ["hassio"]
+}

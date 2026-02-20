@@ -1,0 +1,84 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "OpenClaw Assistant",
+        "description": "Set up the OpenClaw integration. The addon will be auto-detected if installed."
+      },
+      "confirm": {
+        "title": "Addon Discovered",
+        "description": "Found **{addon_name}** running at `{host}:{port}`.\n\nConfig path: `{config_path}`\n\nPress Submit to connect.",
+        "data": {}
+      },
+      "manual": {
+        "title": "Manual Configuration",
+        "description": "The OpenClaw addon was not auto-detected. Enter the gateway connection details manually.",
+        "data": {
+          "gateway_host": "Gateway Host",
+          "gateway_port": "Gateway Port",
+          "gateway_token": "Gateway Token",
+          "use_ssl": "Use SSL (HTTPS)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the OpenClaw gateway. Ensure the addon is running.",
+      "invalid_auth": "Invalid gateway token. Check your OpenClaw configuration.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "OpenClaw is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status"
+      },
+      "last_activity": {
+        "name": "Last Activity"
+      },
+      "session_count": {
+        "name": "Session Count"
+      },
+      "model": {
+        "name": "Model"
+      }
+    },
+    "binary_sensor": {
+      "connected": {
+        "name": "Connected"
+      }
+    }
+  },
+  "services": {
+    "send_message": {
+      "name": "Send Message",
+      "description": "Send a text message to OpenClaw.",
+      "fields": {
+        "message": {
+          "name": "Message",
+          "description": "The message text to send."
+        },
+        "session_id": {
+          "name": "Session ID",
+          "description": "Optional session ID for conversation context."
+        },
+        "attachments": {
+          "name": "Attachments",
+          "description": "Optional file attachments."
+        }
+      }
+    },
+    "clear_history": {
+      "name": "Clear History",
+      "description": "Clear conversation history.",
+      "fields": {
+        "session_id": {
+          "name": "Session ID",
+          "description": "Session to clear."
+        }
+      }
+    }
+  }
+}

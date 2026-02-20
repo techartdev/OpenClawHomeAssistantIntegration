@@ -1,0 +1,37 @@
+send_message:
+  name: Send Message
+  description: Send a text message to OpenClaw and get a response.
+  fields:
+    message:
+      name: Message
+      description: The message text to send to OpenClaw.
+      required: true
+      example: "What's the weather like today?"
+      selector:
+        text:
+          multiline: true
+    session_id:
+      name: Session ID
+      description: Optional conversation session ID. Messages with the same session ID share context.
+      required: false
+      example: "my-automation-session"
+      selector:
+        text:
+    attachments:
+      name: Attachments
+      description: Optional list of file paths to attach to the message.
+      required: false
+      selector:
+        text:
+          multiline: true
+
+clear_history:
+  name: Clear History
+  description: Clear the conversation history for a session.
+  fields:
+    session_id:
+      name: Session ID
+      description: Session ID to clear. If omitted, clears the default session.
+      required: false
+      selector:
+        text:
