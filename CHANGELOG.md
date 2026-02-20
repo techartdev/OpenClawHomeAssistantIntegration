@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.29] - 2026-02-20
+
+### Fixed
+- Voice language selection now prioritizes the preferred Assist pipeline language (`assist_pipeline/pipeline/list`) instead of only using Home Assistant UI language.
+- Added separate TTS language resolution so spoken replies follow Assist pipeline TTS language when available.
+- Retained safe fallbacks to integration/UI/browser language when Assist pipeline data is unavailable.
+
 ## [0.1.28] - 2026-02-20
 
 ### Fixed

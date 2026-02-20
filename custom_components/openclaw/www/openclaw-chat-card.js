@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.2.7";
+const CARD_VERSION = "0.2.8";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -70,6 +70,7 @@ class OpenClawChatCard extends HTMLElement {
     this._pendingResponses = 0;
     this._speechLangOverride = null;
     this._integrationVoiceLanguage = null;
+    this._integrationTtsLanguage = null;
     this._allowBraveWebSpeechIntegration = false;
     this._voiceBackendBlocked = false;
     this._voiceStopRequested = false;
@@ -320,6 +321,37 @@ class OpenClawChatCard extends HTMLElement {
         ? this._normalizeSpeechLanguage(result.language)
         : null;
 
+      try {
+        let pipelineResult;
+        if (typeof this._hass.callWS === "function") {
+          pipelineResult = await this._hass.callWS({ type: "assist_pipeline/pipeline/list" });
+        } else {
+          pipelineResult = await this._hass.connection.sendMessagePromise({
+            type: "assist_pipeline/pipeline/list",
+          });
+        }
+
+        const preferredPipelineId = pipelineResult?.preferred_pipeline;
+        const pipelines = Array.isArray(pipelineResult?.pipelines)
+          ? pipelineResult.pipelines
+          : [];
+        const preferredPipeline =
+          pipelines.find((pipeline) => pipeline?.id === preferredPipelineId) || pipelines[0];
+
+        const sttLanguage = preferredPipeline?.stt_language || preferredPipeline?.language;
+        const ttsLanguage =
+          preferredPipeline?.tts_language || preferredPipeline?.language || preferredPipeline?.stt_language;
+
+        if (sttLanguage) {
+          this._integrationVoiceLanguage = this._normalizeSpeechLanguage(sttLanguage);
+        }
+        if (ttsLanguage) {
+          this._integrationTtsLanguage = this._normalizeSpeechLanguage(ttsLanguage);
+        }
+      } catch (pipelineErr) {
+        console.debug("OpenClaw: assist pipeline language detection skipped:", pipelineErr);
+      }
+
       if (this._alwaysVoiceMode && !this._isVoiceMode) {
         this._isVoiceMode = true;
         this._startVoiceRecognition();
@@ -476,6 +508,20 @@ class OpenClawChatCard extends HTMLElement {
       this._hass?.locale?.language || this._hass?.selectedLanguage || this._hass?.language;
     const browserLang = navigator.language;
     const preferred = configuredLang || integrationLang || hassLang || browserLang || "en-US";
+    return this._normalizeSpeechLanguage(preferred);
+  }
+
+  _getSpeechSynthesisLanguage() {
+    const configuredLang = this._config.voice_language;
+    const preferred =
+      configuredLang ||
+      this._integrationTtsLanguage ||
+      this._integrationVoiceLanguage ||
+      this._hass?.locale?.language ||
+      this._hass?.selectedLanguage ||
+      this._hass?.language ||
+      navigator.language ||
+      "en-US";
     return this._normalizeSpeechLanguage(preferred);
   }
 
@@ -685,7 +731,7 @@ class OpenClawChatCard extends HTMLElement {
     if (!("speechSynthesis" in window)) return;
     // Strip markdown for TTS
     const plain = text.replace(/[*_`#\[\]()]/g, "");
-    const language = this._getSpeechRecognitionLanguage();
+    const language = this._getSpeechSynthesisLanguage();
 
     const speakNow = () => {
       const utterance = new SpeechSynthesisUtterance(plain);
