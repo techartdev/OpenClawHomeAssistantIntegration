@@ -23,8 +23,10 @@ OpenClaw is a Home Assistant custom integration that connects your HA instance t
 - **Services**
   - `openclaw.send_message`
   - `openclaw.clear_history`
+  - `openclaw.invoke_tool`
 - **Event**
   - `openclaw_message_received`
+  - `openclaw_tool_invoked`
 - **Sensors / status entities** for model and connection state
 
 ---
@@ -191,6 +193,31 @@ data:
   session_id: "living-room-session"
 ```
 
+### `openclaw.invoke_tool`
+
+Invoke a single OpenClaw Gateway tool directly.
+
+Fields:
+
+- `tool` (required)
+- `action` (optional)
+- `args` (optional object)
+- `session_key` (optional)
+- `dry_run` (optional)
+- `message_channel` (optional)
+- `account_id` (optional)
+
+Example:
+
+```yaml
+service: openclaw.invoke_tool
+data:
+  tool: sessions_list
+  action: json
+  args: {}
+  session_key: main
+```
+
 ---
 
 ## Event
@@ -215,6 +242,34 @@ action:
   - service: notify.mobile_app_phone
     data:
       message: "{{ trigger.event.data.message }}"
+```
+
+### `openclaw_tool_invoked`
+
+Fired when `openclaw.invoke_tool` completes.
+
+Event data includes:
+
+- `tool`
+- `ok`
+- `result`
+- `error`
+- `duration_ms`
+- `timestamp`
+
+Automation example:
+
+```yaml
+trigger:
+  - platform: event
+    event_type: openclaw_tool_invoked
+condition:
+  - condition: template
+    value_template: "{{ trigger.event.data.ok == false }}"
+action:
+  - service: notify.mobile_app_phone
+    data:
+      message: "Tool {{ trigger.event.data.tool }} failed: {{ trigger.event.data.error }}"
 ```
 
 ---

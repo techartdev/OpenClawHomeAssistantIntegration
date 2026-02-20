@@ -19,6 +19,12 @@ from .const import (
     DATA_CONNECTED,
     DATA_CONTEXT_WINDOW,
     DATA_GATEWAY_VERSION,
+    DATA_LAST_TOOL_DURATION_MS,
+    DATA_LAST_TOOL_ERROR,
+    DATA_LAST_TOOL_INVOKED_AT,
+    DATA_LAST_TOOL_NAME,
+    DATA_LAST_TOOL_RESULT_PREVIEW,
+    DATA_LAST_TOOL_STATUS,
     DATA_LAST_ACTIVITY,
     DATA_MODEL,
     DATA_PROVIDER,
@@ -61,6 +67,14 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_activity: datetime | None = None
         self._model_cache: dict[str, Any] = {}
         self._consecutive_failures = 0
+        self._last_tool_state: dict[str, Any] = {
+            DATA_LAST_TOOL_NAME: None,
+            DATA_LAST_TOOL_STATUS: None,
+            DATA_LAST_TOOL_DURATION_MS: None,
+            DATA_LAST_TOOL_INVOKED_AT: None,
+            DATA_LAST_TOOL_ERROR: None,
+            DATA_LAST_TOOL_RESULT_PREVIEW: None,
+        }
 
     def _offline_data(self) -> dict[str, Any]:
         """Return a data dict representing the offline state."""
@@ -75,6 +89,12 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             DATA_UPTIME: None,
             DATA_PROVIDER: self._model_cache.get(DATA_PROVIDER),
             DATA_CONTEXT_WINDOW: self._model_cache.get(DATA_CONTEXT_WINDOW),
+            DATA_LAST_TOOL_NAME: self._last_tool_state.get(DATA_LAST_TOOL_NAME),
+            DATA_LAST_TOOL_STATUS: self._last_tool_state.get(DATA_LAST_TOOL_STATUS),
+            DATA_LAST_TOOL_DURATION_MS: self._last_tool_state.get(DATA_LAST_TOOL_DURATION_MS),
+            DATA_LAST_TOOL_INVOKED_AT: self._last_tool_state.get(DATA_LAST_TOOL_INVOKED_AT),
+            DATA_LAST_TOOL_ERROR: self._last_tool_state.get(DATA_LAST_TOOL_ERROR),
+            DATA_LAST_TOOL_RESULT_PREVIEW: self._last_tool_state.get(DATA_LAST_TOOL_RESULT_PREVIEW),
         }
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -134,7 +154,31 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # /v1/models not implemented — expected, not an error
             pass
 
+        # ── Best-effort sessions_list via tools invoke ──────────────
+        try:
+            tool_resp = await self.client.async_invoke_tool(
+                tool="sessions_list",
+                action="json",
+                args={},
+            )
+            result = tool_resp.get("result") if isinstance(tool_resp, dict) else None
+            sessions: list[dict[str, Any]] = []
+            if isinstance(result, list):
+                sessions = [item for item in result if isinstance(item, dict)]
+            elif isinstance(result, dict):
+                candidates = result.get("sessions") or result.get("items") or result.get("data")
+                if isinstance(candidates, list):
+                    sessions = [item for item in candidates if isinstance(item, dict)]
+
+            if sessions:
+                data[DATA_SESSIONS] = sessions
+                data[DATA_SESSION_COUNT] = len(sessions)
+        except OpenClawApiError:
+            # tools endpoint may be policy-limited; not fatal
+            pass
+
         data.update(self._model_cache)
+        data.update(self._last_tool_state)
         return data
 
     async def _try_refresh_token(self) -> None:
@@ -154,3 +198,25 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Called when a message is sent/received through the integration.
         """
         self._last_activity = datetime.now(timezone.utc)
+
+    def record_tool_invocation(
+        self,
+        *,
+        tool_name: str,
+        ok: bool,
+        duration_ms: int,
+        error_message: str | None = None,
+        result_preview: str | None = None,
+    ) -> None:
+        """Store latest tool invocation metadata and update entities immediately."""
+        self._last_tool_state = {
+            DATA_LAST_TOOL_NAME: tool_name,
+            DATA_LAST_TOOL_STATUS: "ok" if ok else "error",
+            DATA_LAST_TOOL_DURATION_MS: duration_ms,
+            DATA_LAST_TOOL_INVOKED_AT: datetime.now(timezone.utc),
+            DATA_LAST_TOOL_ERROR: error_message,
+            DATA_LAST_TOOL_RESULT_PREVIEW: result_preview,
+        }
+        current = dict(self.data or self._offline_data())
+        current.update(self._last_tool_state)
+        self.async_set_updated_data(current)

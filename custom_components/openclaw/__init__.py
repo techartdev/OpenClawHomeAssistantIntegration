@@ -10,6 +10,7 @@ import json
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -32,7 +33,18 @@ from .const import (
     ATTR_ATTACHMENTS,
     ATTR_MESSAGE,
     ATTR_MODEL,
+    ATTR_OK,
+    ATTR_RESULT,
+    ATTR_ERROR,
+    ATTR_DURATION_MS,
     ATTR_SESSION_ID,
+    ATTR_SESSION_KEY,
+    ATTR_TOOL,
+    ATTR_ACTION,
+    ATTR_ARGS,
+    ATTR_DRY_RUN,
+    ATTR_MESSAGE_CHANNEL,
+    ATTR_ACCOUNT_ID,
     ATTR_TIMESTAMP,
     CONF_ADDON_CONFIG_PATH,
     CONF_GATEWAY_HOST,
@@ -60,9 +72,11 @@ from .const import (
     DEFAULT_VOICE_PROVIDER,
     DOMAIN,
     EVENT_MESSAGE_RECEIVED,
+    EVENT_TOOL_INVOKED,
     OPENCLAW_CONFIG_REL_PATH,
     PLATFORMS,
     SERVICE_CLEAR_HISTORY,
+    SERVICE_INVOKE_TOOL,
     SERVICE_SEND_MESSAGE,
 )
 from .coordinator import OpenClawCoordinator
@@ -78,7 +92,7 @@ _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 # URL at which the card JS is served (registered via register_static_path)
 _CARD_STATIC_URL = f"/openclaw/{_CARD_FILENAME}"
 # Versioned URL used for Lovelace resource registration to avoid stale browser cache
-_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.39"
+_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.40"
 
 OpenClawConfigEntry = ConfigEntry
 
@@ -95,6 +109,18 @@ SEND_MESSAGE_SCHEMA = vol.Schema(
 CLEAR_HISTORY_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_SESSION_ID): cv.string,
+    }
+)
+
+INVOKE_TOOL_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_TOOL): cv.string,
+        vol.Optional(ATTR_ACTION): cv.string,
+        vol.Optional(ATTR_ARGS, default={}): dict,
+        vol.Optional(ATTR_SESSION_KEY): cv.string,
+        vol.Optional(ATTR_DRY_RUN, default=False): cv.boolean,
+        vol.Optional(ATTR_MESSAGE_CHANNEL): cv.string,
+        vol.Optional(ATTR_ACCOUNT_ID): cv.string,
     }
 )
 
@@ -348,9 +374,6 @@ async def _async_add_lovelace_resource(hass: HomeAssistant, url: str) -> bool:
 def _async_register_services(hass: HomeAssistant) -> None:
     """Register openclaw.send_message and openclaw.clear_history services."""
 
-    if hass.services.has_service(DOMAIN, SERVICE_SEND_MESSAGE):
-        return
-
     async def handle_send_message(call: ServiceCall) -> None:
         """Handle the openclaw.send_message service call."""
         message: str = call.data[ATTR_MESSAGE]
@@ -451,18 +474,94 @@ def _async_register_services(hass: HomeAssistant) -> None:
         else:
             store.clear()
 
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_SEND_MESSAGE,
-        handle_send_message,
-        schema=SEND_MESSAGE_SCHEMA,
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_CLEAR_HISTORY,
-        handle_clear_history,
-        schema=CLEAR_HISTORY_SCHEMA,
-    )
+    async def handle_invoke_tool(call: ServiceCall) -> None:
+        """Handle the openclaw.invoke_tool service call."""
+        tool_name: str = call.data[ATTR_TOOL]
+        action: str | None = call.data.get(ATTR_ACTION)
+        args: dict[str, Any] = call.data.get(ATTR_ARGS) or {}
+        session_key: str | None = call.data.get(ATTR_SESSION_KEY)
+        dry_run: bool = bool(call.data.get(ATTR_DRY_RUN, False))
+        message_channel: str | None = call.data.get(ATTR_MESSAGE_CHANNEL)
+        account_id: str | None = call.data.get(ATTR_ACCOUNT_ID)
+
+        entry_data = _get_first_entry_data(hass)
+        if not entry_data:
+            _LOGGER.error("No OpenClaw integration configured")
+            return
+
+        client: OpenClawApiClient = entry_data["client"]
+        coordinator: OpenClawCoordinator = entry_data["coordinator"]
+
+        started = perf_counter()
+        ok = False
+        result: Any = None
+        error_message: str | None = None
+
+        try:
+            response = await client.async_invoke_tool(
+                tool=tool_name,
+                action=action,
+                args=args,
+                session_key=session_key,
+                dry_run=dry_run,
+                message_channel=message_channel,
+                account_id=account_id,
+            )
+            ok = bool(response.get("ok", True)) if isinstance(response, dict) else True
+            result = response.get("result") if isinstance(response, dict) else response
+            if isinstance(response, dict) and response.get("error"):
+                error_message = str(response.get("error"))
+        except OpenClawApiError as err:
+            ok = False
+            error_message = str(err)
+
+        duration_ms = int((perf_counter() - started) * 1000)
+        result_preview = _summarize_tool_result(result)
+        coordinator.record_tool_invocation(
+            tool_name=tool_name,
+            ok=ok,
+            duration_ms=duration_ms,
+            error_message=error_message,
+            result_preview=result_preview,
+        )
+
+        event_payload = {
+            ATTR_TOOL: tool_name,
+            ATTR_ACTION: action,
+            ATTR_SESSION_KEY: session_key,
+            ATTR_DRY_RUN: dry_run,
+            ATTR_OK: ok,
+            ATTR_RESULT: result,
+            ATTR_ERROR: error_message,
+            ATTR_DURATION_MS: duration_ms,
+            ATTR_TIMESTAMP: datetime.now(timezone.utc).isoformat(),
+        }
+        hass.bus.async_fire(EVENT_TOOL_INVOKED, event_payload)
+
+        if not ok:
+            raise OpenClawApiError(error_message or "Tool invocation failed")
+
+    if not hass.services.has_service(DOMAIN, SERVICE_SEND_MESSAGE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SEND_MESSAGE,
+            handle_send_message,
+            schema=SEND_MESSAGE_SCHEMA,
+        )
+    if not hass.services.has_service(DOMAIN, SERVICE_CLEAR_HISTORY):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CLEAR_HISTORY,
+            handle_clear_history,
+            schema=CLEAR_HISTORY_SCHEMA,
+        )
+    if not hass.services.has_service(DOMAIN, SERVICE_INVOKE_TOOL):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_INVOKE_TOOL,
+            handle_invoke_tool,
+            schema=INVOKE_TOOL_SCHEMA,
+        )
 
 
 def _get_first_entry_data(hass: HomeAssistant) -> dict[str, Any] | None:
@@ -519,6 +618,25 @@ def _extract_text_recursive(value: Any, depth: int = 0) -> str | None:
                 return extracted
 
     return None
+
+
+def _summarize_tool_result(value: Any, max_len: int = 240) -> str | None:
+    """Return compact string preview of tool result payload."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+    else:
+        try:
+            text = json.dumps(value, ensure_ascii=False)
+        except (TypeError, ValueError):
+            text = str(value)
+    text = text.strip()
+    if not text:
+        return None
+    if len(text) > max_len:
+        return f"{text[:max_len]}…"
+    return text
 
 
 def _extract_assistant_message(response: dict[str, Any]) -> str | None:

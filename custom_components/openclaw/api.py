@@ -12,6 +12,7 @@ import aiohttp
 from .const import (
     API_CHAT_COMPLETIONS,
     API_MODELS,
+    API_TOOLS_INVOKE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -382,6 +383,62 @@ class OpenClawApiClient:
                 timeout=API_TIMEOUT,
             ) as resp:
                 return resp.status < 500
+        except (aiohttp.ClientConnectorError, aiohttp.ClientOSError, asyncio.TimeoutError) as err:
+            raise OpenClawConnectionError(
+                f"Cannot connect to OpenClaw gateway: {err}"
+            ) from err
+
+    async def async_invoke_tool(
+        self,
+        tool: str,
+        action: str | None = None,
+        args: dict[str, Any] | None = None,
+        session_key: str | None = None,
+        dry_run: bool = False,
+        message_channel: str | None = None,
+        account_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Invoke a single OpenClaw tool via gateway HTTP endpoint."""
+        payload: dict[str, Any] = {
+            "tool": tool,
+            "args": args or {},
+            "dryRun": bool(dry_run),
+        }
+        if action:
+            payload["action"] = action
+        if session_key:
+            payload["sessionKey"] = session_key
+
+        headers = self._headers()
+        if message_channel:
+            headers["x-openclaw-message-channel"] = message_channel
+        if account_id:
+            headers["x-openclaw-account-id"] = account_id
+
+        session = await self._get_session()
+        url = f"{self._base_url}{API_TOOLS_INVOKE}"
+
+        try:
+            async with session.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=STREAM_TIMEOUT,
+            ) as resp:
+                if resp.status == 401:
+                    raise OpenClawAuthError("Authentication failed")
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise OpenClawApiError(f"Tool invoke error {resp.status}: {text[:300]}")
+
+                content_type = resp.content_type or ""
+                if "json" not in content_type:
+                    text = await resp.text()
+                    raise OpenClawApiError(
+                        f"Unexpected tool response content type '{content_type}': {text[:300]}"
+                    )
+                return await resp.json()
+
         except (aiohttp.ClientConnectorError, aiohttp.ClientOSError, asyncio.TimeoutError) as err:
             raise OpenClawConnectionError(
                 f"Cannot connect to OpenClaw gateway: {err}"

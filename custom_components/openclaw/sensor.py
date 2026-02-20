@@ -17,6 +17,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DATA_GATEWAY_VERSION,
+    DATA_LAST_TOOL_DURATION_MS,
+    DATA_LAST_TOOL_ERROR,
+    DATA_LAST_TOOL_INVOKED_AT,
+    DATA_LAST_TOOL_NAME,
+    DATA_LAST_TOOL_RESULT_PREVIEW,
+    DATA_LAST_TOOL_STATUS,
     DATA_LAST_ACTIVITY,
     DATA_MODEL,
     DATA_PROVIDER,
@@ -54,6 +60,32 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
         translation_key="model",
         name="OpenClaw Model",
         icon="mdi:brain",
+    ),
+    SensorEntityDescription(
+        key=DATA_LAST_TOOL_NAME,
+        translation_key="last_tool_name",
+        name="OpenClaw Last Tool",
+        icon="mdi:tools",
+    ),
+    SensorEntityDescription(
+        key=DATA_LAST_TOOL_STATUS,
+        translation_key="last_tool_status",
+        name="OpenClaw Last Tool Status",
+        icon="mdi:check-decagram",
+    ),
+    SensorEntityDescription(
+        key=DATA_LAST_TOOL_DURATION_MS,
+        translation_key="last_tool_duration_ms",
+        name="OpenClaw Last Tool Duration",
+        icon="mdi:speedometer",
+        native_unit_of_measurement="ms",
+    ),
+    SensorEntityDescription(
+        key=DATA_LAST_TOOL_INVOKED_AT,
+        translation_key="last_tool_invoked_at",
+        name="OpenClaw Last Tool Invoked",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:clock-outline",
     ),
 )
 
@@ -133,6 +165,13 @@ class OpenClawSensor(CoordinatorEntity[OpenClawCoordinator], SensorEntity):
         if key == DATA_LAST_ACTIVITY:
             return {
                 "last_message_preview": None,  # TODO: populate from last message
+            }
+
+        if key in {DATA_LAST_TOOL_NAME, DATA_LAST_TOOL_STATUS, DATA_LAST_TOOL_DURATION_MS}:
+            return {
+                "error": data.get(DATA_LAST_TOOL_ERROR),
+                "result_preview": data.get(DATA_LAST_TOOL_RESULT_PREVIEW),
+                "invoked_at": data.get(DATA_LAST_TOOL_INVOKED_AT),
             }
 
         return None

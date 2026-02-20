@@ -58,16 +58,24 @@ DATA_GATEWAY_VERSION = "gateway_version"
 DATA_UPTIME = "uptime"
 DATA_PROVIDER = "provider"
 DATA_CONTEXT_WINDOW = "context_window"
+DATA_LAST_TOOL_NAME = "last_tool_name"
+DATA_LAST_TOOL_STATUS = "last_tool_status"
+DATA_LAST_TOOL_DURATION_MS = "last_tool_duration_ms"
+DATA_LAST_TOOL_INVOKED_AT = "last_tool_invoked_at"
+DATA_LAST_TOOL_ERROR = "last_tool_error"
+DATA_LAST_TOOL_RESULT_PREVIEW = "last_tool_result_preview"
 
 # Platforms
 PLATFORMS = ["sensor", "binary_sensor", "conversation"]
 
 # Events
 EVENT_MESSAGE_RECEIVED = f"{DOMAIN}_message_received"
+EVENT_TOOL_INVOKED = f"{DOMAIN}_tool_invoked"
 
 # Services
 SERVICE_SEND_MESSAGE = "send_message"
 SERVICE_CLEAR_HISTORY = "clear_history"
+SERVICE_INVOKE_TOOL = "invoke_tool"
 
 # Attributes
 ATTR_MESSAGE = "message"
@@ -75,6 +83,17 @@ ATTR_SESSION_ID = "session_id"
 ATTR_ATTACHMENTS = "attachments"
 ATTR_MODEL = "model"
 ATTR_TIMESTAMP = "timestamp"
+ATTR_TOOL = "tool"
+ATTR_ACTION = "action"
+ATTR_ARGS = "args"
+ATTR_SESSION_KEY = "session_key"
+ATTR_DRY_RUN = "dry_run"
+ATTR_MESSAGE_CHANNEL = "message_channel"
+ATTR_ACCOUNT_ID = "account_id"
+ATTR_OK = "ok"
+ATTR_RESULT = "result"
+ATTR_ERROR = "error"
+ATTR_DURATION_MS = "duration_ms"
 
 # API endpoints
 # The OpenClaw gateway exposes only the OpenAI-compatible endpoints.
@@ -82,3 +101,4 @@ ATTR_TIMESTAMP = "timestamp"
 # home page (text/html) for any unrecognised route.
 API_MODELS = "/v1/models"
 API_CHAT_COMPLETIONS = "/v1/chat/completions"
+API_TOOLS_INVOKE = "/tools/invoke"

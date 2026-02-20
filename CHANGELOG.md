@@ -2,6 +2,17 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.40] - 2026-02-20
+
+### Added
+- Added OpenClaw Gateway tools endpoint integration (`POST /tools/invoke`) in the API client.
+- Added new Home Assistant service `openclaw.invoke_tool` with support for tool/action/args/session routing fields.
+- Added new event `openclaw_tool_invoked` for automation hooks on tool execution results.
+- Added tool telemetry sensors: last tool name, status, duration, and invocation timestamp.
+
+### Changed
+- Coordinator now performs a best-effort `sessions_list` tool invocation to populate session count/list when available.
+
 ## [0.1.39] - 2026-02-20
 
 ### Fixed

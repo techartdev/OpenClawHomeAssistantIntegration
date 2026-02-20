@@ -35,3 +35,53 @@ clear_history:
       required: false
       selector:
         text:
+
+invoke_tool:
+  name: Invoke Tool
+  description: Invoke a single OpenClaw Gateway tool via /tools/invoke.
+  fields:
+    tool:
+      name: Tool
+      description: Tool name to invoke.
+      required: true
+      example: "sessions_list"
+      selector:
+        text:
+    action:
+      name: Action
+      description: Optional action string passed to the tool endpoint.
+      required: false
+      example: "json"
+      selector:
+        text:
+    args:
+      name: Args
+      description: Tool-specific args object.
+      required: false
+      selector:
+        object:
+    session_key:
+      name: Session Key
+      description: Optional target OpenClaw session key.
+      required: false
+      example: "main"
+      selector:
+        text:
+    dry_run:
+      name: Dry Run
+      description: Optional dry-run flag (reserved by gateway).
+      required: false
+      selector:
+        boolean:
+    message_channel:
+      name: Message Channel
+      description: Optional channel hint header (e.g. slack, telegram).
+      required: false
+      selector:
+        text:
+    account_id:
+      name: Account ID
+      description: Optional account hint header for multi-account routing.
+      required: false
+      selector:
+        text:

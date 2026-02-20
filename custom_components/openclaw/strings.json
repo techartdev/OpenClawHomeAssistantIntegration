@@ -63,6 +63,18 @@
       },
       "model": {
         "name": "Model"
+      },
+      "last_tool_name": {
+        "name": "Last Tool"
+      },
+      "last_tool_status": {
+        "name": "Last Tool Status"
+      },
+      "last_tool_duration_ms": {
+        "name": "Last Tool Duration"
+      },
+      "last_tool_invoked_at": {
+        "name": "Last Tool Invoked"
       }
     },
     "binary_sensor": {
@@ -97,6 +109,40 @@
         "session_id": {
           "name": "Session ID",
           "description": "Session to clear."
+        }
+      }
+    },
+    "invoke_tool": {
+      "name": "Invoke Tool",
+      "description": "Invoke a single OpenClaw gateway tool.",
+      "fields": {
+        "tool": {
+          "name": "Tool",
+          "description": "Tool name to invoke."
+        },
+        "action": {
+          "name": "Action",
+          "description": "Optional action string for the tool."
+        },
+        "args": {
+          "name": "Args",
+          "description": "Tool arguments object."
+        },
+        "session_key": {
+          "name": "Session Key",
+          "description": "Optional target session key."
+        },
+        "dry_run": {
+          "name": "Dry Run",
+          "description": "Optional dry-run flag."
+        },
+        "message_channel": {
+          "name": "Message Channel",
+          "description": "Optional channel context header."
+        },
+        "account_id": {
+          "name": "Account ID",
+          "description": "Optional account context header."
         }
       }
     }
