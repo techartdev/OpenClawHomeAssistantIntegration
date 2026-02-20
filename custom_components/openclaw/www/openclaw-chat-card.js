@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.2";
+const CARD_VERSION = "0.3.3";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -131,6 +131,7 @@ class OpenClawChatCard extends HTMLElement {
   }
 
   connectedCallback() {
+    this._subscribeToEvents();
     this._syncHistoryFromBackend();
     this._loadIntegrationSettings();
     this._render();
@@ -425,6 +426,8 @@ class OpenClawChatCard extends HTMLElement {
   async _sendMessage(text) {
     if (!text || !text.trim() || !this._hass) return;
 
+    await this._subscribeToEvents();
+
     const message = text.trim();
     this._addMessage("user", message);
 
@@ -447,6 +450,10 @@ class OpenClawChatCard extends HTMLElement {
         message: message,
         session_id: this._config.session_id || undefined,
       });
+
+      setTimeout(() => {
+        this._syncHistoryFromBackend(1);
+      }, 1200);
     } catch (err) {
       console.error("OpenClaw: Failed to send message:", err);
       // Replace thinking with error

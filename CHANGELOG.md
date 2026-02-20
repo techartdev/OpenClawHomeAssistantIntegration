@@ -2,6 +2,12 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.35] - 2026-02-20
+
+### Fixed
+- Improved chat-card reliability when using voice send flow by re-subscribing to `openclaw_message_received` after card reconnects.
+- Added backend history-sync fallback after message send so user/assistant messages still appear when an event is missed.
+
 ## [0.1.34] - 2026-02-20
 
 ### Changed
