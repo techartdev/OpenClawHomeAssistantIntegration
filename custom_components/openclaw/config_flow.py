@@ -45,7 +45,9 @@ from .const import (
     CONF_WAKE_WORD,
     CONF_WAKE_WORD_ENABLED,
     CONF_ALLOW_BRAVE_WEBSPEECH,
+    CONF_BROWSER_VOICE_LANGUAGE,
     CONF_VOICE_PROVIDER,
+    BROWSER_VOICE_LANGUAGES,
     CONTEXT_STRATEGY_CLEAR,
     CONTEXT_STRATEGY_TRUNCATE,
     DEFAULT_GATEWAY_HOST,
@@ -57,6 +59,7 @@ from .const import (
     DEFAULT_WAKE_WORD,
     DEFAULT_WAKE_WORD_ENABLED,
     DEFAULT_ALLOW_BRAVE_WEBSPEECH,
+    DEFAULT_BROWSER_VOICE_LANGUAGE,
     DEFAULT_VOICE_PROVIDER,
     DOMAIN,
     OPENCLAW_CONFIG_REL_PATH,
@@ -414,66 +417,73 @@ class OpenClawOptionsFlow(OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         options = self._config_entry.options
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_INCLUDE_EXPOSED_CONTEXT,
-                        default=options.get(
-                            CONF_INCLUDE_EXPOSED_CONTEXT,
-                            DEFAULT_INCLUDE_EXPOSED_CONTEXT,
-                        ),
-                    ): bool,
-                    vol.Optional(
-                        CONF_CONTEXT_MAX_CHARS,
-                        default=options.get(
-                            CONF_CONTEXT_MAX_CHARS,
-                            DEFAULT_CONTEXT_MAX_CHARS,
-                        ),
-                    ): vol.All(int, vol.Range(min=1000, max=200000)),
-                    vol.Optional(
-                        CONF_CONTEXT_STRATEGY,
-                        default=options.get(
-                            CONF_CONTEXT_STRATEGY,
-                            DEFAULT_CONTEXT_STRATEGY,
-                        ),
-                    ): vol.In([CONTEXT_STRATEGY_TRUNCATE, CONTEXT_STRATEGY_CLEAR]),
-                    vol.Optional(
-                        CONF_ENABLE_TOOL_CALLS,
-                        default=options.get(
-                            CONF_ENABLE_TOOL_CALLS,
-                            DEFAULT_ENABLE_TOOL_CALLS,
-                        ),
-                    ): bool,
-                    vol.Optional(
-                        CONF_WAKE_WORD_ENABLED,
-                        default=options.get(
-                            CONF_WAKE_WORD_ENABLED,
-                            DEFAULT_WAKE_WORD_ENABLED,
-                        ),
-                    ): bool,
-                    vol.Optional(
-                        CONF_WAKE_WORD,
-                        default=options.get(
-                            CONF_WAKE_WORD,
-                            DEFAULT_WAKE_WORD,
-                        ),
-                    ): str,
-                    vol.Optional(
-                        CONF_ALLOW_BRAVE_WEBSPEECH,
-                        default=options.get(
-                            CONF_ALLOW_BRAVE_WEBSPEECH,
-                            DEFAULT_ALLOW_BRAVE_WEBSPEECH,
-                        ),
-                    ): bool,
-                    vol.Optional(
-                        CONF_VOICE_PROVIDER,
-                        default=options.get(
-                            CONF_VOICE_PROVIDER,
-                            DEFAULT_VOICE_PROVIDER,
-                        ),
-                    ): vol.In(["browser", "assist_stt"]),
-                }
-            ),
-        )
+        selected_provider = options.get(CONF_VOICE_PROVIDER, DEFAULT_VOICE_PROVIDER)
+
+        schema: dict[Any, Any] = {
+            vol.Optional(
+                CONF_INCLUDE_EXPOSED_CONTEXT,
+                default=options.get(
+                    CONF_INCLUDE_EXPOSED_CONTEXT,
+                    DEFAULT_INCLUDE_EXPOSED_CONTEXT,
+                ),
+            ): bool,
+            vol.Optional(
+                CONF_CONTEXT_MAX_CHARS,
+                default=options.get(
+                    CONF_CONTEXT_MAX_CHARS,
+                    DEFAULT_CONTEXT_MAX_CHARS,
+                ),
+            ): vol.All(int, vol.Range(min=1000, max=200000)),
+            vol.Optional(
+                CONF_CONTEXT_STRATEGY,
+                default=options.get(
+                    CONF_CONTEXT_STRATEGY,
+                    DEFAULT_CONTEXT_STRATEGY,
+                ),
+            ): vol.In([CONTEXT_STRATEGY_TRUNCATE, CONTEXT_STRATEGY_CLEAR]),
+            vol.Optional(
+                CONF_ENABLE_TOOL_CALLS,
+                default=options.get(
+                    CONF_ENABLE_TOOL_CALLS,
+                    DEFAULT_ENABLE_TOOL_CALLS,
+                ),
+            ): bool,
+            vol.Optional(
+                CONF_WAKE_WORD_ENABLED,
+                default=options.get(
+                    CONF_WAKE_WORD_ENABLED,
+                    DEFAULT_WAKE_WORD_ENABLED,
+                ),
+            ): bool,
+            vol.Optional(
+                CONF_WAKE_WORD,
+                default=options.get(
+                    CONF_WAKE_WORD,
+                    DEFAULT_WAKE_WORD,
+                ),
+            ): str,
+            vol.Optional(
+                CONF_ALLOW_BRAVE_WEBSPEECH,
+                default=options.get(
+                    CONF_ALLOW_BRAVE_WEBSPEECH,
+                    DEFAULT_ALLOW_BRAVE_WEBSPEECH,
+                ),
+            ): bool,
+            vol.Optional(
+                CONF_VOICE_PROVIDER,
+                default=selected_provider,
+            ): vol.In(["browser", "assist_stt"]),
+        }
+
+        if selected_provider == "browser":
+            schema[
+                vol.Optional(
+                    CONF_BROWSER_VOICE_LANGUAGE,
+                    default=options.get(
+                        CONF_BROWSER_VOICE_LANGUAGE,
+                        DEFAULT_BROWSER_VOICE_LANGUAGE,
+                    ),
+                )
+            ] = vol.In(BROWSER_VOICE_LANGUAGES)
+
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))

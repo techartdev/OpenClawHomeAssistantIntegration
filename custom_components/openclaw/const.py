@@ -32,6 +32,7 @@ CONF_WAKE_WORD_ENABLED = "wake_word_enabled"
 CONF_WAKE_WORD = "wake_word"
 CONF_ALLOW_BRAVE_WEBSPEECH = "allow_brave_webspeech"
 CONF_VOICE_PROVIDER = "voice_provider"
+CONF_BROWSER_VOICE_LANGUAGE = "browser_voice_language"
 
 DEFAULT_INCLUDE_EXPOSED_CONTEXT = True
 DEFAULT_CONTEXT_MAX_CHARS = 13000
@@ -41,6 +42,44 @@ DEFAULT_WAKE_WORD_ENABLED = False
 DEFAULT_WAKE_WORD = "hey openclaw"
 DEFAULT_ALLOW_BRAVE_WEBSPEECH = False
 DEFAULT_VOICE_PROVIDER = "browser"
+DEFAULT_BROWSER_VOICE_LANGUAGE = "auto"
+
+BROWSER_VOICE_LANGUAGES: tuple[str, ...] = (
+	"auto",
+	"bg-BG",
+	"en-US",
+	"en-GB",
+	"de-DE",
+	"fr-FR",
+	"es-ES",
+	"it-IT",
+	"pt-PT",
+	"pt-BR",
+	"ru-RU",
+	"nl-NL",
+	"pl-PL",
+	"tr-TR",
+	"uk-UA",
+	"cs-CZ",
+	"ro-RO",
+	"el-GR",
+	"sv-SE",
+	"no-NO",
+	"da-DK",
+	"fi-FI",
+	"hu-HU",
+	"sk-SK",
+	"sl-SI",
+	"hr-HR",
+	"sr-RS",
+	"ja-JP",
+	"ko-KR",
+	"zh-CN",
+	"zh-TW",
+	"ar-SA",
+	"he-IL",
+	"hi-IN",
+)
 
 CONTEXT_STRATEGY_TRUNCATE = "truncate"
 CONTEXT_STRATEGY_CLEAR = "clear"

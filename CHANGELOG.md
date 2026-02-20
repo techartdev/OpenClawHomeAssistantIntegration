@@ -2,6 +2,15 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.42] - 2026-02-21
+
+### Added
+- Added integration option `browser_voice_language` (shown when `voice_provider` is `browser`) to explicitly control browser STT/TTS language.
+
+### Fixed
+- Browser voice provider now applies integration-configured browser voice language for both listening and spoken replies.
+- Voice replies are no longer spoken for one-shot/manual voice sends unless continuous voice mode is actively running.
+
 ## [0.1.41] - 2026-02-20
 
 ### Fixed

@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.5";
+const CARD_VERSION = "0.3.6";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -68,6 +68,7 @@ class OpenClawChatCard extends HTMLElement {
     this._voiceNetworkErrorCount = 0;
     this._pendingResponses = 0;
     this._speechLangOverride = null;
+    this._integrationBrowserVoiceLanguage = null;
     this._integrationVoiceLanguage = null;
     this._integrationTtsLanguage = null;
     this._allowBraveWebSpeechIntegration = false;
@@ -229,7 +230,7 @@ class OpenClawChatCard extends HTMLElement {
     this._scrollToBottom();
 
     // In voice mode, speak the response
-    if (this._isVoiceMode && data.message) {
+    if (this._isVoiceMode && this._recognition && data.message) {
       this._speak(data.message);
     }
   }
@@ -354,6 +355,10 @@ class OpenClawChatCard extends HTMLElement {
       this._allowBraveWebSpeechIntegration = !!result?.allow_brave_webspeech;
       this._voiceProviderIntegration =
         result?.voice_provider === "assist_stt" ? "assist_stt" : "browser";
+      this._integrationBrowserVoiceLanguage =
+        result?.browser_voice_language && result?.browser_voice_language !== "auto"
+          ? this._normalizeSpeechLanguage(result.browser_voice_language)
+          : null;
       this._integrationVoiceLanguage = result?.language
         ? this._normalizeSpeechLanguage(result.language)
         : null;
@@ -544,6 +549,13 @@ class OpenClawChatCard extends HTMLElement {
     }
 
     const configuredLang = this._config.voice_language;
+    if (configuredLang) {
+      return this._normalizeSpeechLanguage(configuredLang);
+    }
+    const provider = this._getVoiceProvider();
+    if (provider === "browser" && this._integrationBrowserVoiceLanguage) {
+      return this._normalizeSpeechLanguage(this._integrationBrowserVoiceLanguage);
+    }
     const integrationLang = this._integrationVoiceLanguage;
     const hassLang =
       this._hass?.locale?.language || this._hass?.selectedLanguage || this._hass?.language;
@@ -554,6 +566,13 @@ class OpenClawChatCard extends HTMLElement {
 
   _getSpeechSynthesisLanguage() {
     const configuredLang = this._config.voice_language;
+    if (configuredLang) {
+      return this._normalizeSpeechLanguage(configuredLang);
+    }
+    const provider = this._getVoiceProvider();
+    if (provider === "browser" && this._integrationBrowserVoiceLanguage) {
+      return this._normalizeSpeechLanguage(this._integrationBrowserVoiceLanguage);
+    }
     const preferred =
       configuredLang ||
       this._integrationTtsLanguage ||

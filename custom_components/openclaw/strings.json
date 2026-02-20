@@ -44,7 +44,8 @@
           "wake_word_enabled": "Require wake word",
           "wake_word": "Wake word",
           "allow_brave_webspeech": "Allow Web Speech in Brave (experimental)",
-          "voice_provider": "Voice input provider (browser or HA STT)"
+          "voice_provider": "Voice input provider (browser or HA STT)",
+          "browser_voice_language": "Browser voice language"
         }
       }
     }
