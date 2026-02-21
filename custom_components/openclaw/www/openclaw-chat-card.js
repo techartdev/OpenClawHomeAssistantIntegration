@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.8";
+const CARD_VERSION = "0.3.9";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -641,6 +641,11 @@ class OpenClawChatCard extends HTMLElement {
     return brandMatch || ua.includes("brave") || !!navigator.brave;
   }
 
+  _isHomeAssistantAndroidApp() {
+    const ua = (navigator.userAgent || "").toLowerCase();
+    return ua.includes("home assistant") && ua.includes("android");
+  }
+
   _getVoiceProvider() {
     const configured = this._config.voice_provider;
     if (configured === "assist_stt" || configured === "browser") {
@@ -1218,6 +1223,7 @@ class OpenClawChatCard extends HTMLElement {
           if (this._voiceIdleRestartTimer) {
             clearTimeout(this._voiceIdleRestartTimer);
           }
+          const idleRestartDelayMs = this._isHomeAssistantAndroidApp() ? 3500 : 1500;
           this._voiceIdleRestartTimer = setTimeout(() => {
             this._voiceIdleRestartTimer = null;
             if (!this._isVoiceMode || !this._recognition) {
@@ -1228,7 +1234,7 @@ class OpenClawChatCard extends HTMLElement {
             } catch (e) {
               // Ignore — may already be started
             }
-          }, 1500);
+          }, idleRestartDelayMs);
           return;
         }
 
@@ -1348,14 +1354,35 @@ class OpenClawChatCard extends HTMLElement {
   }
 
   _speak(text) {
-    if (!("speechSynthesis" in window)) return;
+    const hasBrowserTts = "speechSynthesis" in window;
     this._pauseVoiceInputForTts();
+    this._voiceStatus = "Speaking…";
+    this._render();
     // Strip markdown for TTS
     const plain = text.replace(/[*_`#\[\]()]/g, "");
     const preferredLanguage = this._getSpeechSynthesisLanguage();
     const fallbackLanguage = this._normalizeSpeechLanguage(
       this._hass?.locale?.language || this._hass?.selectedLanguage || this._hass?.language || navigator.language || "en-US"
     );
+
+    if (!hasBrowserTts) {
+      this._voiceStatus = "Browser TTS unavailable, trying Home Assistant TTS…";
+      this._render();
+      this._speakViaHomeAssistantTts(plain, preferredLanguage).then((ok) => {
+        if (ok) {
+          this._voiceStatus = "";
+          this._render();
+          this._resumeVoiceInputAfterTts();
+          return;
+        }
+
+        const reason = this._lastHaTtsAttempt ? ` (${this._lastHaTtsAttempt})` : "";
+        this._voiceStatus = `TTS unavailable${reason}`;
+        this._render();
+        this._resumeVoiceInputAfterTts();
+      });
+      return;
+    }
 
     const pickVoice = (targetLanguage, voices) => {
       const normalizedTarget = String(targetLanguage || "").toLowerCase();
@@ -1468,6 +1495,8 @@ class OpenClawChatCard extends HTMLElement {
       };
 
       utterance.onend = () => {
+        this._voiceStatus = "";
+        this._render();
         this._resumeVoiceInputAfterTts();
       };
 
@@ -1478,6 +1507,25 @@ class OpenClawChatCard extends HTMLElement {
       }
       speechSynthesis.speak(utterance);
     };
+
+    if (this._isHomeAssistantAndroidApp()) {
+      this._voiceStatus = "Speaking with Home Assistant TTS…";
+      this._render();
+      this._speakViaHomeAssistantTts(plain, preferredLanguage).then((ok) => {
+        if (ok) {
+          this._voiceStatus = "";
+          this._render();
+          this._resumeVoiceInputAfterTts();
+          return;
+        }
+
+        const reason = this._lastHaTtsAttempt ? ` (${this._lastHaTtsAttempt})` : "";
+        this._voiceStatus = `Home Assistant TTS unavailable${reason}; trying browser TTS…`;
+        this._render();
+        speakNow(preferredLanguage);
+      });
+      return;
+    }
 
     const loadedVoices = speechSynthesis.getVoices() || [];
     if (loadedVoices.length) {

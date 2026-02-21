@@ -1,7 +1,7 @@
 (async () => {
   try {
     if (!customElements.get("openclaw-chat-card")) {
-      const src = "/openclaw/openclaw-chat-card.js?v=0.1.49";
+      const src = "/openclaw/openclaw-chat-card.js?v=0.1.50";
       console.info("OpenClaw loader importing", src);
       await import(src);
     }

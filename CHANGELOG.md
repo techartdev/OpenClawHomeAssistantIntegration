@@ -2,6 +2,11 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.50] - 2026-02-21
+
+### Fixed
+- Improved Android Home Assistant app voice behavior by preferring Home Assistant TTS first and handling browser-TTS-unavailable cases correctly.
+
 ## [0.1.49] - 2026-02-21
 
 ### Fixed
