@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.7";
+const CARD_VERSION = "0.3.8";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -64,8 +64,11 @@ class OpenClawChatCard extends HTMLElement {
     this._wakeWord = "hey openclaw";
     this._voiceStatus = "";
     this._voiceRetryTimer = null;
+    this._voiceIdleRestartTimer = null;
     this._voiceRetryCount = 0;
     this._voiceNetworkErrorCount = 0;
+    this._speechDetectedInCycle = false;
+    this._lastRecognitionError = null;
     this._pendingResponses = 0;
     this._speechLangOverride = null;
     this._integrationBrowserVoiceLanguage = null;
@@ -90,6 +93,7 @@ class OpenClawChatCard extends HTMLElement {
     this._assistInputSampleRate = 16000;
     this._assistAutoStopTimer = null;
     this._lastAssistantEventSignature = null;
+    this._autoScrollPinned = true;
   }
 
   // ── HA card interface ───────────────────────────────────────────────
@@ -251,8 +255,10 @@ class OpenClawChatCard extends HTMLElement {
     this._render();
     this._scrollToBottom();
 
+    this._syncHistoryFromBackend(1);
+
     // In voice mode, speak the response
-    if (this._isVoiceMode && this._recognition && data.message) {
+    if (this._isVoiceMode && data.message) {
       this._speak(data.message);
     }
   }
@@ -1050,6 +1056,12 @@ class OpenClawChatCard extends HTMLElement {
   _startBrowserVoiceRecognition() {
     this._voiceBackendBlocked = false;
     this._voiceStopRequested = false;
+    this._speechDetectedInCycle = false;
+    this._lastRecognitionError = null;
+    if (this._voiceIdleRestartTimer) {
+      clearTimeout(this._voiceIdleRestartTimer);
+      this._voiceIdleRestartTimer = null;
+    }
     const allowBraveWebSpeech =
       this._config.allow_brave_webspeech || this._allowBraveWebSpeechIntegration;
 
@@ -1069,7 +1081,7 @@ class OpenClawChatCard extends HTMLElement {
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     this._recognition = new SpeechRecognition();
-    this._recognition.continuous = false;
+    this._recognition.continuous = this._isVoiceMode;
     this._recognition.interimResults = false;
     this._recognition.maxAlternatives = 1;
     this._recognition.lang = this._getSpeechRecognitionLanguage();
@@ -1084,6 +1096,8 @@ class OpenClawChatCard extends HTMLElement {
       if (result.isFinal) {
         const text = result[0].transcript?.trim();
         if (!text) return;
+        this._speechDetectedInCycle = true;
+        this._lastRecognitionError = null;
 
         const requireWakeWord = this._wakeWordEnabled && this._isVoiceMode;
 
@@ -1120,6 +1134,9 @@ class OpenClawChatCard extends HTMLElement {
       if (this._voiceStopRequested) {
         return;
       }
+      if (this._isVoiceMode && !this._speechDetectedInCycle) {
+        return;
+      }
       try {
         this._recognition.stop();
       } catch (e) {
@@ -1129,6 +1146,7 @@ class OpenClawChatCard extends HTMLElement {
 
     this._recognition.onerror = (event) => {
       const err = event?.error || "unknown";
+      this._lastRecognitionError = err;
       if (err === "aborted") {
         if (this._voiceStopRequested) {
           return;
@@ -1191,6 +1209,29 @@ class OpenClawChatCard extends HTMLElement {
       }
 
       if (this._isVoiceMode) {
+        const previousError = this._lastRecognitionError;
+        const hadSpeech = this._speechDetectedInCycle;
+        this._speechDetectedInCycle = false;
+        this._lastRecognitionError = null;
+
+        if (previousError === "no-speech" && !hadSpeech) {
+          if (this._voiceIdleRestartTimer) {
+            clearTimeout(this._voiceIdleRestartTimer);
+          }
+          this._voiceIdleRestartTimer = setTimeout(() => {
+            this._voiceIdleRestartTimer = null;
+            if (!this._isVoiceMode || !this._recognition) {
+              return;
+            }
+            try {
+              this._recognition.start();
+            } catch (e) {
+              // Ignore — may already be started
+            }
+          }, 1500);
+          return;
+        }
+
         // Restart recognition in voice mode
         try {
           this._recognition.start();
@@ -1232,8 +1273,14 @@ class OpenClawChatCard extends HTMLElement {
       clearTimeout(this._voiceRetryTimer);
       this._voiceRetryTimer = null;
     }
+    if (this._voiceIdleRestartTimer) {
+      clearTimeout(this._voiceIdleRestartTimer);
+      this._voiceIdleRestartTimer = null;
+    }
     this._voiceRetryCount = 0;
     this._voiceNetworkErrorCount = 0;
+    this._speechDetectedInCycle = false;
+    this._lastRecognitionError = null;
     this._isVoiceMode = false;
     this._voiceStatus = "";
   }
@@ -1264,6 +1311,28 @@ class OpenClawChatCard extends HTMLElement {
     }, delayMs);
   }
 
+  _pauseVoiceInputForTts() {
+    if (!this._isVoiceMode) return;
+    if (!this._recognition) return;
+
+    try {
+      this._voiceStopRequested = true;
+      this._recognition.abort();
+    } catch (err) {
+      console.debug("OpenClaw: could not pause voice recognition during TTS", err);
+    }
+    this._recognition = null;
+  }
+
+  _resumeVoiceInputAfterTts() {
+    if (!this._isVoiceMode) return;
+    if (this._recognition) return;
+
+    this._startVoiceRecognition().catch((err) => {
+      console.error("OpenClaw: failed to resume voice recognition after TTS", err);
+    });
+  }
+
   async _toggleVoiceMode() {
     await this._loadIntegrationSettings(false);
     this._isVoiceMode = !this._isVoiceMode;
@@ -1280,6 +1349,7 @@ class OpenClawChatCard extends HTMLElement {
 
   _speak(text) {
     if (!("speechSynthesis" in window)) return;
+    this._pauseVoiceInputForTts();
     // Strip markdown for TTS
     const plain = text.replace(/[*_`#\[\]()]/g, "");
     const preferredLanguage = this._getSpeechSynthesisLanguage();
@@ -1342,6 +1412,7 @@ class OpenClawChatCard extends HTMLElement {
             if (ok) {
               this._voiceStatus = "";
               this._render();
+              this._resumeVoiceInputAfterTts();
               return;
             }
 
@@ -1368,6 +1439,7 @@ class OpenClawChatCard extends HTMLElement {
             if (ok) {
               this._voiceStatus = "";
               this._render();
+              this._resumeVoiceInputAfterTts();
               return;
             }
 
@@ -1379,6 +1451,7 @@ class OpenClawChatCard extends HTMLElement {
             const reason = event?.error ? ` (${event.error})` : "";
             this._voiceStatus = `TTS error for language ${targetLanguage}${reason}`;
             this._render();
+            this._resumeVoiceInputAfterTts();
           });
           return;
         }
@@ -1391,6 +1464,11 @@ class OpenClawChatCard extends HTMLElement {
         const reason = event?.error ? ` (${event.error})` : "";
         this._voiceStatus = `TTS error for language ${targetLanguage}${reason}`;
         this._render();
+        this._resumeVoiceInputAfterTts();
+      };
+
+      utterance.onend = () => {
+        this._resumeVoiceInputAfterTts();
       };
 
       try {
@@ -1433,6 +1511,12 @@ class OpenClawChatCard extends HTMLElement {
       if (!engineCandidates.includes(normalized)) {
         engineCandidates.push(normalized);
       }
+      if (normalized.startsWith("tts.")) {
+        const alias = normalized.slice(4);
+        if (alias && !engineCandidates.includes(alias)) {
+          engineCandidates.push(alias);
+        }
+      }
     }
 
     if (!engineCandidates.length) {
@@ -1446,63 +1530,99 @@ class OpenClawChatCard extends HTMLElement {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
+    const languageCandidates = [];
+    const normalizedLanguage = typeof language === "string" ? language.trim() : "";
+    if (normalizedLanguage) {
+      languageCandidates.push(normalizedLanguage);
+      const baseLanguage = normalizedLanguage.split("-")[0];
+      if (baseLanguage && baseLanguage !== normalizedLanguage) {
+        languageCandidates.push(baseLanguage);
+      }
+    }
+    languageCandidates.push(null);
+
     let audioPath = null;
     let selectedEngine = null;
+    let selectedLanguage = null;
     let lastError = "unknown_error";
 
     for (const engine of engineCandidates) {
-      console.info("OpenClaw: trying HA TTS engine", engine, "language", language);
-      const payloads = [
-        {
-          platform: engine,
-          message: text,
-          language,
-          cache: true,
-        },
-        {
-          engine_id: engine,
-          message: text,
-          language,
-          cache: true,
-        },
-        {
-          tts_engine_id: engine,
-          message: text,
-          language,
-          cache: true,
-        },
-      ];
+      for (const candidateLanguage of languageCandidates) {
+        const payloads = [
+          {
+            platform: engine,
+            message: text,
+            cache: true,
+            ...(candidateLanguage ? { language: candidateLanguage } : {}),
+          },
+          {
+            engine_id: engine,
+            message: text,
+            cache: true,
+            ...(candidateLanguage ? { language: candidateLanguage } : {}),
+          },
+          {
+            tts_engine_id: engine,
+            message: text,
+            cache: true,
+            ...(candidateLanguage ? { language: candidateLanguage } : {}),
+          },
+        ];
 
-      for (const payload of payloads) {
-        try {
-          const response = await fetch("/api/tts_get_url", {
-            method: "POST",
-            headers,
-            body: JSON.stringify(payload),
-          });
+        console.info(
+          "OpenClaw: trying HA TTS engine",
+          engine,
+          "language",
+          candidateLanguage || "auto"
+        );
 
-          if (!response.ok) {
-            lastError = `engine=${engine}, tts_get_url_http=${response.status}`;
-            continue;
-          }
+        for (const payload of payloads) {
+          try {
+            const response = await fetch("/api/tts_get_url", {
+              method: "POST",
+              headers,
+              body: JSON.stringify(payload),
+            });
 
-          const body = await response.json();
-          const candidate = body?.url || body?.path || body?.audio_url || body?.audioUrl;
-          if (!candidate) {
-            lastError = `engine=${engine}, no_audio_url_in_response`;
-            continue;
-          }
+            if (!response.ok) {
+              let responseSnippet = "";
+              try {
+                responseSnippet = (await response.text()).trim().slice(0, 120);
+              } catch (_err) {
+                // ignore response body parsing failure
+              }
+              lastError =
+                `engine=${engine}, lang=${candidateLanguage || "auto"}, ` +
+                `tts_get_url_http=${response.status}` +
+                (responseSnippet ? `, detail=${responseSnippet}` : "");
+              continue;
+            }
 
-          audioPath = String(candidate).startsWith("http")
-            ? String(candidate)
-            : String(candidate).startsWith("/")
+            const body = await response.json();
+            const candidate = body?.url || body?.path || body?.audio_url || body?.audioUrl;
+            if (!candidate) {
+              lastError =
+                `engine=${engine}, lang=${candidateLanguage || "auto"}, no_audio_url_in_response`;
+              continue;
+            }
+
+            audioPath = String(candidate).startsWith("http")
               ? String(candidate)
-              : `/${String(candidate)}`;
-          selectedEngine = engine;
+              : String(candidate).startsWith("/")
+                ? String(candidate)
+                : `/${String(candidate)}`;
+            selectedEngine = engine;
+            selectedLanguage = candidateLanguage;
+            break;
+          } catch (err) {
+            console.debug("OpenClaw: HA TTS URL request failed", err);
+            lastError =
+              `engine=${engine}, lang=${candidateLanguage || "auto"}, tts_get_url_request_failed`;
+          }
+        }
+
+        if (audioPath) {
           break;
-        } catch (err) {
-          console.debug("OpenClaw: HA TTS URL request failed", err);
-          lastError = `engine=${engine}, tts_get_url_request_failed`;
         }
       }
 
@@ -1521,7 +1641,9 @@ class OpenClawChatCard extends HTMLElement {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!audioResponse.ok) {
-        this._lastHaTtsAttempt = `engine=${selectedEngine}, audio_fetch_http=${audioResponse.status}`;
+        this._lastHaTtsAttempt =
+          `engine=${selectedEngine}, lang=${selectedLanguage || "auto"}, ` +
+          `audio_fetch_http=${audioResponse.status}`;
         return false;
       }
 
@@ -1549,11 +1671,12 @@ class OpenClawChatCard extends HTMLElement {
         }
       });
 
-      this._lastHaTtsAttempt = `engine=${selectedEngine}, ok`;
+      this._lastHaTtsAttempt = `engine=${selectedEngine}, lang=${selectedLanguage || "auto"}, ok`;
       return true;
     } catch (err) {
       console.debug("OpenClaw: HA TTS playback failed", err);
-      this._lastHaTtsAttempt = `engine=${selectedEngine}, audio_playback_failed`;
+      this._lastHaTtsAttempt =
+        `engine=${selectedEngine}, lang=${selectedLanguage || "auto"}, audio_playback_failed`;
       return false;
     }
   }
@@ -1579,10 +1702,16 @@ class OpenClawChatCard extends HTMLElement {
 
   // ── UI helpers ──────────────────────────────────────────────────────
 
-  _scrollToBottom() {
+  _isNearBottom(container, threshold = 48) {
+    if (!container) return true;
+    const distance = container.scrollHeight - (container.scrollTop + container.clientHeight);
+    return distance <= threshold;
+  }
+
+  _scrollToBottom(force = false) {
     requestAnimationFrame(() => {
       const container = this.shadowRoot?.querySelector(".messages");
-      if (container) {
+      if (container && (force || this._autoScrollPinned)) {
         container.scrollTop = container.scrollHeight;
       }
     });
@@ -1601,6 +1730,11 @@ class OpenClawChatCard extends HTMLElement {
   // ── Render ──────────────────────────────────────────────────────────
 
   _render() {
+    const previousContainer = this.shadowRoot?.querySelector(".messages");
+    if (previousContainer) {
+      this._autoScrollPinned = this._isNearBottom(previousContainer);
+    }
+
     const config = this._config;
     const messages = this._messages;
 
@@ -1966,6 +2100,13 @@ class OpenClawChatCard extends HTMLElement {
     if (clearBtn) {
       clearBtn.addEventListener("click", () => {
         if (confirm("Clear chat history?")) this._clearChat();
+      });
+    }
+
+    const messagesContainer = this.shadowRoot.getElementById("messages");
+    if (messagesContainer) {
+      messagesContainer.addEventListener("scroll", () => {
+        this._autoScrollPinned = this._isNearBottom(messagesContainer);
       });
     }
 

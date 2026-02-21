@@ -2,6 +2,14 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.49] - 2026-02-21
+
+### Fixed
+- Reduced repeated voice-mode start/stop cycles in silence to avoid frequent mobile chime sounds.
+- Prevented voice mode from hearing and re-triggering on its own spoken TTS responses.
+- Improved chat auto-scroll behavior so manual scroll position is respected when reading older messages.
+- Improved cross-device chat consistency by forcing quick backend history sync after message events.
+
 ## [0.1.48] - 2026-02-21
 
 ### Fixed
