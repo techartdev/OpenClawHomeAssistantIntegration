@@ -21,6 +21,7 @@ CONF_GATEWAY_HOST = "gateway_host"
 CONF_GATEWAY_PORT = "gateway_port"
 CONF_GATEWAY_TOKEN = "gateway_token"
 CONF_USE_SSL = "use_ssl"
+CONF_VERIFY_SSL = "verify_ssl"
 CONF_ADDON_CONFIG_PATH = "addon_config_path"
 
 # Options

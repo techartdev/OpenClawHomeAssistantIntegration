@@ -49,6 +49,7 @@ class OpenClawApiClient:
         port: int,
         token: str,
         use_ssl: bool = False,
+        verify_ssl: bool = True,
         session: aiohttp.ClientSession | None = None,
     ) -> None:
         """Initialize the API client.
@@ -58,14 +59,19 @@ class OpenClawApiClient:
             port: Gateway port number.
             token: Authentication token from openclaw.json.
             use_ssl: Use HTTPS instead of HTTP.
+            verify_ssl: Verify SSL certificates (set False for self-signed certs).
             session: Optional aiohttp session (reused from HA).
         """
         self._host = host
         self._port = port
         self._token = token
         self._use_ssl = use_ssl
+        self._verify_ssl = verify_ssl
         self._session = session
         self._base_url = f"{'https' if use_ssl else 'http'}://{host}:{port}"
+        # ssl=False disables cert verification for self-signed certs;
+        # ssl=None uses default verification.
+        self._ssl_param: bool | None = False if (use_ssl and not verify_ssl) else None
 
     @property
     def base_url(self) -> str:
@@ -121,6 +127,7 @@ class OpenClawApiClient:
                 url,
                 headers=self._headers(),
                 timeout=timeout,
+                ssl=self._ssl_param,
                 **kwargs,
             ) as resp:
                 if resp.status == 401:
@@ -146,6 +153,13 @@ class OpenClawApiClient:
                     )
                 return await resp.json()
 
+        except aiohttp.ClientConnectorCertificateError as err:
+            raise OpenClawConnectionError(
+                f"SSL certificate verification failed for {url}. "
+                f"If using self-signed certificates (e.g. lan_https mode), "
+                f"disable 'Verify SSL certificate' in the integration config. "
+                f"Error: {err}"
+            ) from err
         except (aiohttp.ClientConnectorError, aiohttp.ClientOSError, asyncio.TimeoutError) as err:
             raise OpenClawConnectionError(
                 f"Cannot connect to OpenClaw gateway at {url}: {err}"
@@ -213,6 +227,7 @@ class OpenClawApiClient:
                 headers=headers,
                 json=payload,
                 timeout=STREAM_TIMEOUT,
+                ssl=self._ssl_param,
             ) as resp:
                 if resp.status == 401:
                     raise OpenClawAuthError("Authentication failed")
@@ -274,6 +289,7 @@ class OpenClawApiClient:
                 headers=headers,
                 json=payload,
                 timeout=STREAM_TIMEOUT,
+                ssl=self._ssl_param,
             ) as resp:
                 if resp.status == 401:
                     raise OpenClawAuthError("Authentication failed")
@@ -338,6 +354,7 @@ class OpenClawApiClient:
                 headers=self._headers(),
                 json={"messages": [], "stream": False},
                 timeout=API_TIMEOUT,
+                ssl=self._ssl_param,
             ) as resp:
                 if resp.status in (401, 403):
                     raise OpenClawAuthError(
@@ -381,6 +398,7 @@ class OpenClawApiClient:
             async with session.get(
                 self._base_url,
                 timeout=API_TIMEOUT,
+                ssl=self._ssl_param,
             ) as resp:
                 return resp.status < 500
         except (aiohttp.ClientConnectorError, aiohttp.ClientOSError, asyncio.TimeoutError) as err:
@@ -424,6 +442,7 @@ class OpenClawApiClient:
                 headers=headers,
                 json=payload,
                 timeout=STREAM_TIMEOUT,
+                ssl=self._ssl_param,
             ) as resp:
                 if resp.status == 401:
                     raise OpenClawAuthError("Authentication failed")

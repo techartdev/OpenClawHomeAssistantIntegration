@@ -38,6 +38,7 @@ from .const import (
     CONF_GATEWAY_PORT,
     CONF_GATEWAY_TOKEN,
     CONF_USE_SSL,
+    CONF_VERIFY_SSL,
     CONF_CONTEXT_MAX_CHARS,
     CONF_CONTEXT_STRATEGY,
     CONF_ENABLE_TOOL_CALLS,
@@ -233,11 +234,30 @@ async def _async_try_discover_addon(hass: HomeAssistant) -> dict[str, Any] | Non
     if port is None:
         port = DEFAULT_GATEWAY_PORT
 
+    # Detect access mode — lan_https uses a built-in HTTPS reverse proxy.
+    # In that mode nginx terminates TLS on the external (user-facing) port
+    # and the gateway itself listens on port+1 on loopback (plain HTTP).
+    # Since HA and the addon share host_network, we connect to the internal
+    # port via loopback to avoid self-signed certificate issues entirely.
+    access_mode = addon_options.get("access_mode", "custom")
+    use_ssl = False
+    verify_ssl = True
+
+    if access_mode == "lan_https":
+        _LOGGER.info(
+            "Detected access_mode=lan_https — using internal gateway port %d "
+            "(external HTTPS proxy is on port %d)",
+            port + 1,
+            port,
+        )
+        port = port + 1
+
     return {
         CONF_GATEWAY_HOST: DEFAULT_GATEWAY_HOST,
         CONF_GATEWAY_PORT: port,
         CONF_GATEWAY_TOKEN: token,
-        CONF_USE_SSL: False,
+        CONF_USE_SSL: use_ssl,
+        CONF_VERIFY_SSL: verify_ssl,
         CONF_ADDON_CONFIG_PATH: str(config_dir),
     }
 
@@ -248,14 +268,16 @@ async def _async_validate_connection(
     port: int,
     token: str,
     use_ssl: bool = False,
+    verify_ssl: bool = True,
 ) -> bool:
     """Validate that we can connect and authenticate to the gateway."""
-    session = async_get_clientsession(hass)
+    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
     client = OpenClawApiClient(
         host=host,
         port=port,
         token=token,
         use_ssl=use_ssl,
+        verify_ssl=verify_ssl,
         session=session,
     )
     return await client.async_check_connection()
@@ -312,6 +334,7 @@ class OpenClawConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._discovered[CONF_GATEWAY_PORT],
                     self._discovered[CONF_GATEWAY_TOKEN],
                     self._discovered.get(CONF_USE_SSL, False),
+                    self._discovered.get(CONF_VERIFY_SSL, True),
                 )
             except OpenClawAuthError:
                 connected = False
@@ -355,17 +378,23 @@ class OpenClawConfigFlow(ConfigFlow, domain=DOMAIN):
             port = user_input[CONF_GATEWAY_PORT]
             token = user_input[CONF_GATEWAY_TOKEN]
             use_ssl = user_input.get(CONF_USE_SSL, False)
+            verify_ssl = user_input.get(CONF_VERIFY_SSL, True)
 
             try:
                 connected = await _async_validate_connection(
-                    self.hass, host, port, token, use_ssl
+                    self.hass, host, port, token, use_ssl, verify_ssl
                 )
             except OpenClawAuthError:
                 errors["base"] = "invalid_auth"
                 connected = False
-            except OpenClawConnectionError:
-                errors["base"] = "cannot_connect"
+            except OpenClawConnectionError as err:
+                err_msg = str(err).lower()
+                if "ssl" in err_msg or "certificate" in err_msg:
+                    errors["base"] = "ssl_error"
+                else:
+                    errors["base"] = "cannot_connect"
                 connected = False
+                _LOGGER.warning("Connection error during config check: %s", err)
             except OpenClawApiError as err:
                 errors["base"] = "openai_api_disabled"
                 connected = False
@@ -379,6 +408,7 @@ class OpenClawConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_GATEWAY_PORT: port,
                         CONF_GATEWAY_TOKEN: token,
                         CONF_USE_SSL: use_ssl,
+                        CONF_VERIFY_SSL: verify_ssl,
                     },
                 )
             if "base" not in errors:
@@ -396,6 +426,7 @@ class OpenClawConfigFlow(ConfigFlow, domain=DOMAIN):
                     ): vol.All(int, vol.Range(min=1, max=65535)),
                     vol.Required(CONF_GATEWAY_TOKEN): str,
                     vol.Optional(CONF_USE_SSL, default=False): bool,
+                    vol.Optional(CONF_VERIFY_SSL, default=True): bool,
                 }
             ),
             errors=errors,

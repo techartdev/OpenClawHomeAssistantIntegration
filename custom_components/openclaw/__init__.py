@@ -51,6 +51,7 @@ from .const import (
     CONF_GATEWAY_PORT,
     CONF_GATEWAY_TOKEN,
     CONF_USE_SSL,
+    CONF_VERIFY_SSL,
     CONF_CONTEXT_MAX_CHARS,
     CONF_CONTEXT_STRATEGY,
     CONF_ENABLE_TOOL_CALLS,
@@ -92,7 +93,7 @@ _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 # URL at which the card JS is served (registered via register_static_path)
 _CARD_STATIC_URL = f"/openclaw/{_CARD_FILENAME}"
 # Versioned URL used for Lovelace resource registration to avoid stale browser cache
-_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.51"
+_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.52"
 
 OpenClawConfigEntry = ConfigEntry
 
@@ -130,13 +131,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenClawConfigEntry) -> 
 
     Creates the API client, coordinator, and forwards setup to platforms.
     """
-    session = async_get_clientsession(hass)
+    use_ssl = entry.data.get(CONF_USE_SSL, False)
+    verify_ssl = entry.data.get(CONF_VERIFY_SSL, True)
+    session = async_get_clientsession(hass, verify_ssl=verify_ssl)
 
     client = OpenClawApiClient(
         host=entry.data[CONF_GATEWAY_HOST],
         port=entry.data[CONF_GATEWAY_PORT],
         token=entry.data[CONF_GATEWAY_TOKEN],
-        use_ssl=entry.data.get(CONF_USE_SSL, False),
+        use_ssl=use_ssl,
+        verify_ssl=verify_ssl,
         session=session,
     )
 

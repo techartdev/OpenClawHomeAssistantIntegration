@@ -38,10 +38,68 @@ OpenClaw is a Home Assistant custom integration that connects your HA instance t
 ## Requirements
 
 - Home Assistant Core `2025.1.0+` (declared minimum)
-- Supervisor is optional (used for auto-discovery)
-- OpenClaw Assistant addon installed and running
+- An **OpenClaw gateway** with `enable_openai_api` enabled — either:
+  - The [OpenClaw Assistant addon](https://github.com/techartdev/OpenClawHomeAssistant) running on the same HA instance (auto-discovery supported), **or**
+  - Any standalone [OpenClaw](https://github.com/openclaw/openclaw) installation reachable over the network (manual config)
+- Supervisor is optional (used only for addon auto-discovery)
 
-The integration can auto-detect the addon when Supervisor is available. You can always configure host/port/token manually.
+> **No addon required.** If you have OpenClaw running anywhere — on a separate server, a VPS, a Docker container, or even another machine on your LAN — this integration can connect to it via the manual configuration flow.
+
+---
+
+## Connection modes
+
+The integration supports connecting to OpenClaw in several ways:
+
+### Local addon (auto-discovery)
+
+If the OpenClaw Assistant addon is installed on the **same** Home Assistant instance, the integration auto-discovers it:
+- Reads token from the shared filesystem
+- Detects `access_mode` and chooses the correct port automatically
+- No manual config needed — just click **Submit** on the confirm step
+
+> **`lan_https` mode**: The integration automatically connects to the internal gateway port (plain HTTP on loopback), bypassing the HTTPS proxy entirely. No certificate setup required.
+
+### Remote or standalone OpenClaw instance (manual config)
+
+You can connect to **any reachable OpenClaw gateway** — whether it's the HA addon on another machine, a standalone `openclaw` install on a VPS, or a Docker container on your LAN. The integration doesn't care how OpenClaw is installed; it only needs the `/v1/chat/completions` endpoint.
+
+**Prerequisites on the OpenClaw instance:**
+
+1. The OpenAI-compatible API must be **enabled**:
+   - **Addon users**: Set `enable_openai_api: true` in addon settings
+   - **Standalone users**: Set `gateway.http.endpoints.chatCompletions.enabled: true` in `openclaw.json`, or run:
+     ```sh
+     openclaw config set gateway.http.endpoints.chatCompletions.enabled true
+     ```
+2. The gateway must be **network-reachable** from your HA instance (not bound to loopback only)
+3. You need the **gateway auth token**:
+   ```sh
+   openclaw config get gateway.auth.token
+   ```
+
+**Setup steps:**
+
+1. Go to **Settings → Devices & Services → Add Integration → OpenClaw**
+2. Auto-discovery will fail (no local addon) — you'll see the **Manual Configuration** form
+3. Fill in:
+   - **Gateway Host**: IP or hostname of the remote machine (e.g. `192.168.1.50`)
+   - **Gateway Port**: The gateway port (default `18789`)
+   - **Gateway Token**: Auth token from the remote `openclaw.json`
+   - **Use SSL (HTTPS)**: Check if connecting to an HTTPS endpoint
+   - **Verify SSL certificate**: Uncheck for self-signed certificates (e.g. `lan_https` mode)
+
+### Common remote scenarios
+
+| Remote access mode | Host | Port | Use SSL | Verify SSL | Notes |
+|---|---|---|---|---|---|
+| Standalone OpenClaw (plain HTTP on LAN) | Remote IP | 18789 | ❌ | — | Default `openclaw gateway run` config |
+| `lan_https` (addon built-in HTTPS proxy) | Remote IP | 18789 | ✅ | ❌ | Self-signed cert; disable verification |
+| Behind reverse proxy (NPM/Caddy with Let's Encrypt) | Domain or IP | 443 | ✅ | ✅ | Trusted cert from a real CA |
+| Plain HTTP addon on LAN | Remote IP | 18789 | ❌ | — | Addon `bind_mode` must be `lan` |
+| Tailscale | Tailscale IP | 18789 | ❌ | — | Encrypted tunnel; plain HTTP is fine |
+
+> **Security note**: Avoid exposing plain HTTP gateways to the public internet. Use `lan_https`, a reverse proxy with TLS, or Tailscale for remote access.
 
 ---
 
@@ -306,6 +364,12 @@ action:
 
 - Verify `openclaw_message_received` is being fired in Developer Tools → Events
 - Confirm session IDs match between card and service calls
+
+### "400 Bad Request — plain HTTP request was sent to HTTPS port"
+
+- The gateway is running in `lan_https` mode (built-in HTTPS proxy)
+- **Local addon**: Remove and re-add the integration — auto-discovery now detects `lan_https` and uses the correct internal port automatically
+- **Remote connection**: Enable **Use SSL (HTTPS)** and disable **Verify SSL certificate** in the manual config
 
 ---
 

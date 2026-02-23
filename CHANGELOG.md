@@ -2,6 +2,18 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.52] - 2026-02-23
+
+### Added
+- Added HTTPS / SSL support for connecting to OpenClaw gateways running in `lan_https` mode or behind TLS reverse proxies.
+- Auto-discovery now detects `access_mode: lan_https` and connects to the internal gateway port automatically (no certificate setup needed for local addons).
+- Added `Verify SSL certificate` option in manual config for self-signed certificate environments.
+- Added `ssl_error` config flow error with actionable guidance.
+- Added comprehensive remote connection documentation to README with setup table for all access modes.
+
+### Fixed
+- Fixed "400 Bad Request — plain HTTP request was sent to HTTPS port" when the addon uses `lan_https` access mode.
+
 ## [0.1.51] - 2026-02-23
 
 ### Fixed

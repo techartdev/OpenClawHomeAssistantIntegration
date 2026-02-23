@@ -17,14 +17,14 @@
           "gateway_host": "Gateway Host",
           "gateway_port": "Gateway Port",
           "gateway_token": "Gateway Token",
-          "use_ssl": "Use SSL (HTTPS)"
+          "use_ssl": "Use SSL (HTTPS)",
+          "verify_ssl": "Verify SSL certificate"
         }
       }
     },
     "error": {
       "cannot_connect": "Cannot connect to the OpenClaw gateway. Ensure the addon is running.",
-      "invalid_auth": "Invalid gateway token. Check your OpenClaw configuration.",
-      "openai_api_disabled": "The gateway returned an unexpected response — the OpenAI-compatible API is likely disabled. In the OpenClaw addon settings enable 'enable_openai_api', restart the addon, and try again.",
+      "invalid_auth": "Invalid gateway token. Check your OpenClaw configuration.",      "ssl_error": "SSL certificate verification failed. If using self-signed certificates (e.g. lan_https mode), uncheck 'Verify SSL certificate' or use automatic discovery.",      "openai_api_disabled": "The gateway returned an unexpected response — the OpenAI-compatible API is likely disabled. In the OpenClaw addon settings enable 'enable_openai_api', restart the addon, and try again.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
