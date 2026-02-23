@@ -2,6 +2,11 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.51] - 2026-02-23
+
+### Fixed
+- Fixed chat input focus loss while typing by preventing unnecessary card re-renders on frequent Home Assistant state updates.
+
 ## [0.1.50] - 2026-02-21
 
 ### Fixed

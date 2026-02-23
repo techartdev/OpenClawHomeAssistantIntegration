@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.9";
+const CARD_VERSION = "0.3.10";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -94,6 +94,7 @@ class OpenClawChatCard extends HTMLElement {
     this._assistAutoStopTimer = null;
     this._lastAssistantEventSignature = null;
     this._autoScrollPinned = true;
+    this._lastHassRenderSignature = null;
   }
 
   // ── HA card interface ───────────────────────────────────────────────
@@ -126,12 +127,36 @@ class OpenClawChatCard extends HTMLElement {
   set hass(hass) {
     const firstSet = !this._hass;
     this._hass = hass;
+    const currentSignature = this._getHassRenderSignature(hass);
     if (firstSet) {
       this._subscribeToEvents();
       this._syncHistoryFromBackend();
       this._loadIntegrationSettings();
     }
-    this._render();
+    if (firstSet || currentSignature !== this._lastHassRenderSignature) {
+      this._lastHassRenderSignature = currentSignature;
+      this._render();
+    }
+  }
+
+  _getHassRenderSignature(hass) {
+    const states = hass?.states || {};
+    const stateEntries = Object.entries(states);
+
+    const statusEntity =
+      states["sensor.openclaw_status"] ||
+      stateEntries.find(([entityId]) => entityId.startsWith("sensor.openclaw_status"))?.[1] ||
+      null;
+
+    const binaryEntity =
+      states["binary_sensor.openclaw_connected"] ||
+      stateEntries.find(([entityId]) => entityId.startsWith("binary_sensor.openclaw_connected"))?.[1] ||
+      null;
+
+    const status = String(statusEntity?.state || "").toLowerCase();
+    const connectedState = String(binaryEntity?.state || "").toLowerCase();
+
+    return `${status}|${connectedState}`;
   }
 
   _getGatewayConnectionState() {
