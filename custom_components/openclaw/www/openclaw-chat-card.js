@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.11";
+const CARD_VERSION = "0.3.12";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -145,12 +145,16 @@ class OpenClawChatCard extends HTMLElement {
 
     const statusEntity =
       states["sensor.openclaw_status"] ||
-      stateEntries.find(([entityId]) => entityId.startsWith("sensor.openclaw_status"))?.[1] ||
+      stateEntries.find(([entityId]) =>
+        entityId.startsWith("sensor.openclaw") && entityId.includes("status")
+      )?.[1] ||
       null;
 
     const binaryEntity =
       states["binary_sensor.openclaw_connected"] ||
-      stateEntries.find(([entityId]) => entityId.startsWith("binary_sensor.openclaw_connected"))?.[1] ||
+      stateEntries.find(([entityId]) =>
+        entityId.startsWith("binary_sensor.openclaw") && entityId.includes("connected")
+      )?.[1] ||
       null;
 
     const status = String(statusEntity?.state || "").toLowerCase();
@@ -163,17 +167,18 @@ class OpenClawChatCard extends HTMLElement {
     const states = this._hass?.states || {};
     const stateEntries = Object.entries(states);
 
-    const exactStatus = states["sensor.openclaw_status"];
-    const exactConnected = states["binary_sensor.openclaw_connected"];
-
     const statusEntity =
-      exactStatus ||
-      stateEntries.find(([entityId]) => entityId.startsWith("sensor.openclaw_status"))?.[1] ||
+      states["sensor.openclaw_status"] ||
+      stateEntries.find(([entityId]) =>
+        entityId.startsWith("sensor.openclaw") && entityId.includes("status")
+      )?.[1] ||
       null;
 
     const binaryEntity =
-      exactConnected ||
-      stateEntries.find(([entityId]) => entityId.startsWith("binary_sensor.openclaw_connected"))?.[1] ||
+      states["binary_sensor.openclaw_connected"] ||
+      stateEntries.find(([entityId]) =>
+        entityId.startsWith("binary_sensor.openclaw") && entityId.includes("connected")
+      )?.[1] ||
       null;
 
     const status = String(statusEntity?.state || "").toLowerCase();
@@ -1782,10 +1787,12 @@ class OpenClawChatCard extends HTMLElement {
   }
 
   _scrollToBottom(force = false) {
-    const container = this.shadowRoot?.querySelector(".messages");
-    if (container && (force || this._autoScrollPinned)) {
-      container.scrollTop = container.scrollHeight;
-    }
+    requestAnimationFrame(() => {
+      const container = this.shadowRoot?.querySelector(".messages");
+      if (container && (force || this._autoScrollPinned)) {
+        container.scrollTop = container.scrollHeight;
+      }
+    });
   }
 
   _formatTime(isoString) {
@@ -1802,8 +1809,8 @@ class OpenClawChatCard extends HTMLElement {
 
   _render() {
     const previousContainer = this.shadowRoot?.querySelector(".messages");
-    if (previousContainer) {
-      this._autoScrollPinned = this._isNearBottom(previousContainer);
+    if (previousContainer && this._isNearBottom(previousContainer)) {
+      this._autoScrollPinned = true;
     }
 
     const config = this._config;

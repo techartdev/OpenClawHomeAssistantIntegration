@@ -2,6 +2,14 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.55] - 2026-02-23
+
+### Fixed
+- Fixed chat always scrolling to the TOP instead of bottom on every message (both user and bot).
+- Restored `requestAnimationFrame` in `_scrollToBottom()` — synchronous scrollTop assignment after innerHTML replacement does not persist in shadow DOM before the browser finalizes layout.
+- Changed `_render()` to only upgrade `_autoScrollPinned` to `true` (never downgrade), preventing a race condition where rapid re-renders set it to `false` permanently.
+- Fixed "Gateway: Unknown" badge — entity ID lookup now matches `sensor.openclaw*status` and `binary_sensor.openclaw*connected` patterns, covering `has_entity_name` variants like `sensor.openclaw_assistant_status`.
+
 ## [0.1.53] - 2026-02-23
 
 ### Fixed
