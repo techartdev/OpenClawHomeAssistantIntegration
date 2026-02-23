@@ -4,6 +4,10 @@ All notable changes to the OpenClaw Home Assistant Integration will be documente
 
 ## [0.1.55] - 2026-02-23
 
+### Added
+- Added configurable response timeout (`thinking_timeout`) to integration options (**Settings → Integrations → OpenClaw → Configure → Response timeout (seconds)**). Applies to all chat cards automatically.
+- Added `thinking_timeout` card config key (seconds) for per-card override. Card YAML takes precedence over the integration setting, which takes precedence over the built-in default of 120 s.
+
 ### Fixed
 - Fixed chat always scrolling to the TOP instead of bottom on every message (both user and bot).
 - Restored `requestAnimationFrame` in `_scrollToBottom()` — synchronous scrollTop assignment after innerHTML replacement does not persist in shadow DOM before the browser finalizes layout.
