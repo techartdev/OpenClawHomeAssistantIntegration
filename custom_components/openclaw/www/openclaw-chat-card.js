@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.10";
+const CARD_VERSION = "0.3.11";
 
 // Max time (ms) to show the thinking indicator before falling back to an error
 const THINKING_TIMEOUT_MS = 120_000;
@@ -1782,12 +1782,10 @@ class OpenClawChatCard extends HTMLElement {
   }
 
   _scrollToBottom(force = false) {
-    requestAnimationFrame(() => {
-      const container = this.shadowRoot?.querySelector(".messages");
-      if (container && (force || this._autoScrollPinned)) {
-        container.scrollTop = container.scrollHeight;
-      }
-    });
+    const container = this.shadowRoot?.querySelector(".messages");
+    if (container && (force || this._autoScrollPinned)) {
+      container.scrollTop = container.scrollHeight;
+    }
   }
 
   _formatTime(isoString) {
@@ -1909,6 +1907,7 @@ class OpenClawChatCard extends HTMLElement {
         .messages {
           height: ${config.height || "500px"};
           overflow-y: auto;
+          overflow-anchor: none;
           padding: 12px 16px;
           display: flex;
           flex-direction: column;

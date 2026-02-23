@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.53] - 2026-02-23
+
+### Fixed
+- Fixed chat scrolling UP to an older message instead of staying at the bottom when a bot reply arrives.
+- Eliminated requestAnimationFrame race condition in `_scrollToBottom()` that caused `_autoScrollPinned` to be incorrectly set to false when rapid re-renders overlapped.
+- Added `overflow-anchor: none` to the messages container to prevent browser scroll anchoring artifacts after innerHTML replacement.
+
 ## [0.1.52] - 2026-02-23
 
 ### Added
