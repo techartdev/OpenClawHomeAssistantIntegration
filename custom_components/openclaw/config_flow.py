@@ -48,6 +48,7 @@ from .const import (
     CONF_ALLOW_BRAVE_WEBSPEECH,
     CONF_BROWSER_VOICE_LANGUAGE,
     CONF_VOICE_PROVIDER,
+    CONF_THINKING_TIMEOUT,
     BROWSER_VOICE_LANGUAGES,
     CONTEXT_STRATEGY_CLEAR,
     CONTEXT_STRATEGY_TRUNCATE,
@@ -62,6 +63,7 @@ from .const import (
     DEFAULT_ALLOW_BRAVE_WEBSPEECH,
     DEFAULT_BROWSER_VOICE_LANGUAGE,
     DEFAULT_VOICE_PROVIDER,
+    DEFAULT_THINKING_TIMEOUT,
     DOMAIN,
     OPENCLAW_CONFIG_REL_PATH,
 )
@@ -504,6 +506,13 @@ class OpenClawOptionsFlow(OptionsFlow):
                 CONF_VOICE_PROVIDER,
                 default=selected_provider,
             ): vol.In(["browser", "assist_stt"]),
+            vol.Optional(
+                CONF_THINKING_TIMEOUT,
+                default=options.get(
+                    CONF_THINKING_TIMEOUT,
+                    DEFAULT_THINKING_TIMEOUT,
+                ),
+            ): vol.All(int, vol.Range(min=10, max=3600)),
         }
 
         if selected_provider == "browser":

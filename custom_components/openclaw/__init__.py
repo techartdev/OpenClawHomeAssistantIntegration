@@ -61,6 +61,7 @@ from .const import (
     CONF_ALLOW_BRAVE_WEBSPEECH,
     CONF_BROWSER_VOICE_LANGUAGE,
     CONF_VOICE_PROVIDER,
+    CONF_THINKING_TIMEOUT,
     CONTEXT_STRATEGY_TRUNCATE,
     DEFAULT_CONTEXT_MAX_CHARS,
     DEFAULT_CONTEXT_STRATEGY,
@@ -71,6 +72,7 @@ from .const import (
     DEFAULT_ALLOW_BRAVE_WEBSPEECH,
     DEFAULT_BROWSER_VOICE_LANGUAGE,
     DEFAULT_VOICE_PROVIDER,
+    DEFAULT_THINKING_TIMEOUT,
     DOMAIN,
     EVENT_MESSAGE_RECEIVED,
     EVENT_TOOL_INVOKED,
@@ -836,6 +838,10 @@ def _async_register_websocket_api(hass: HomeAssistant) -> None:
                 CONF_BROWSER_VOICE_LANGUAGE: options.get(
                     CONF_BROWSER_VOICE_LANGUAGE,
                     DEFAULT_BROWSER_VOICE_LANGUAGE,
+                ),
+                CONF_THINKING_TIMEOUT: options.get(
+                    CONF_THINKING_TIMEOUT,
+                    DEFAULT_THINKING_TIMEOUT,
                 ),
                 "language": hass.config.language,
             },

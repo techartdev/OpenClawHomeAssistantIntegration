@@ -15,7 +15,7 @@
 
 const CARD_VERSION = "0.3.12";
 
-// Max time (ms) to show the thinking indicator before falling back to an error
+// Max time (ms) to show the thinking indicator before falling back to an error (default; overridable via card config `thinking_timeout` in seconds)
 const THINKING_TIMEOUT_MS = 120_000;
 
 // Session storage key prefix for message persistence across dashboard navigations
@@ -95,6 +95,7 @@ class OpenClawChatCard extends HTMLElement {
     this._lastAssistantEventSignature = null;
     this._autoScrollPinned = true;
     this._lastHassRenderSignature = null;
+    this._integrationThinkingTimeout = null;
   }
 
   // ── HA card interface ───────────────────────────────────────────────
@@ -117,6 +118,7 @@ class OpenClawChatCard extends HTMLElement {
       allow_brave_webspeech: config.allow_brave_webspeech === true,
       voice_provider: config.voice_provider || null,
       session_id: config.session_id || null,
+      thinking_timeout: config.thinking_timeout ?? 120,
       ...config,
     };
     // Restore messages from sessionStorage if available
@@ -420,6 +422,10 @@ class OpenClawChatCard extends HTMLElement {
       this._integrationVoiceLanguage = result?.language
         ? this._normalizeSpeechLanguage(result.language)
         : null;
+      this._integrationThinkingTimeout =
+        typeof result?.thinking_timeout === "number" && result.thinking_timeout >= 10
+          ? result.thinking_timeout * 1000
+          : null;
 
       if (includePipeline) {
         try {
@@ -489,7 +495,7 @@ class OpenClawChatCard extends HTMLElement {
       }
       this._persistMessages();
       this._render();
-    }, THINKING_TIMEOUT_MS);
+    }, (Number(this._config?.thinking_timeout) * 1000) || this._integrationThinkingTimeout || THINKING_TIMEOUT_MS);
   }
 
   _clearThinkingTimer() {
