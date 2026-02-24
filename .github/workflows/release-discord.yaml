@@ -1,0 +1,68 @@
+name: Announce release to Discord
+
+on:
+release:
+types: [published]
+
+permissions:
+contents: read
+
+jobs:
+notify-discord:
+runs-on: ubuntu-latest
+steps:
+- name: Post release announcement to Discord
+env:
+DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+RELEASE_NAME: ${{ github.event.release.name }}
+RELEASE_TAG: ${{ github.event.release.tag_name }}
+RELEASE_URL: ${{ github.event.release.html_url }}
+RELEASE_BODY: ${{ github.event.release.body }}
+REPO: ${{ github.repository }}
+run: |
+if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+echo "DISCORD_WEBHOOK_URL is not configured; skipping."
+exit 0
+fi
+
+if [ -n "$RELEASE_NAME" ]; then
+TITLE="$RELEASE_NAME"
+else
+TITLE="$RELEASE_TAG"
+fi
+
+BODY_CLEAN=$(printf '%s' "$RELEASE_BODY" | sed 's/\r//g')
+BODY_TRIM=$(printf '%s' "$BODY_CLEAN" | sed '/^[[:space:]]*$/d')
+
+if [ -n "$BODY_TRIM" ]; then
+SUMMARY=$(printf '%s' "$BODY_TRIM" | head -c 1400)
+else
+SUMMARY="No release notes provided."
+fi
+
+PAYLOAD=$(jq -n \
+--arg title "🚀 New release published: $TITLE" \
+--arg repo "$REPO" \
+--arg tag "$RELEASE_TAG" \
+--arg url "$RELEASE_URL" \
+--arg summary "$SUMMARY" \
+'{
+content: "",
+embeds: [
+{
+title: $title,
+url: $url,
+color: 5814783,
+fields: [
+{name: "Repository", value: $repo, inline: true},
+{name: "Tag", value: $tag, inline: true},
+{name: "Release URL", value: $url, inline: false},
+{name: "Release notes", value: $summary, inline: false}
+]
+}
+]
+}')
+
+curl -sS -X POST "$DISCORD_WEBHOOK_URL" \
+-H "Content-Type: application/json" \
+-d "$PAYLOAD"
