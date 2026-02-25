@@ -2,6 +2,12 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.57] - 2026-02-26
+
+### Changed
+- Moved integration brand assets to Home Assistant's new local brand path: `custom_components/openclaw/brand/icon.png` and `custom_components/openclaw/brand/logo.png`.
+- This aligns with the 2026.3+ requirement for custom integration brand images served via the local Brands Proxy API.
+
 ## [0.1.56] - 2026-02-25
 
 ### Added
