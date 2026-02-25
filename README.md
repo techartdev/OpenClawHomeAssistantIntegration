@@ -1,7 +1,8 @@
 # OpenClaw Integration for Home Assistant
 
 ## [Join our Discord Server!](https://discord.gg/xeHeKu9jYp)
-![OpenClaw Assistant Integration](https://github.com/techartdev/OpenClawHomeAssistantIntegration/blob/main/pic.png?raw=true)
+<img width="1583" height="563" alt="image" src="https://github.com/user-attachments/assets/b4468dd4-2028-4620-be82-1c6876738276" />
+
 
 _If you want to install OpenClaw as  Add-On/App directly on your Home Assistant instance take a look here:_ https://github.com/techartdev/OpenClawHomeAssistant
 
