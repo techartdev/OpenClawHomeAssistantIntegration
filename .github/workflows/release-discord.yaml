@@ -41,7 +41,7 @@ jobs:
           fi
 
           PAYLOAD=$(jq -n \
-            --arg title "🚀 New release published: $TITLE" \
+            --arg title "🚀 New Integration release published: $TITLE" \
             --arg repo "$REPO" \
             --arg tag "$RELEASE_TAG" \
             --arg url "$RELEASE_URL" \
