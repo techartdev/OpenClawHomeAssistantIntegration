@@ -2,7 +2,7 @@
 
 ## [Join our Discord Server!](https://discord.gg/xeHeKu9jYp)
 <img width="1583" height="563" alt="image" src="https://github.com/user-attachments/assets/b4468dd4-2028-4620-be82-1c6876738276" />
-
+<img width="1536" height="542" alt="ChatGPT Image Feb 25, 2026, 11_37_02 PM" src="https://github.com/user-attachments/assets/ea662d87-5414-4c01-ac48-cb8f731a4988" />
 
 _If you want to install OpenClaw as  Add-On/App directly on your Home Assistant instance take a look here:_ https://github.com/techartdev/OpenClawHomeAssistant
 
