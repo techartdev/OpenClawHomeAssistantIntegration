@@ -84,6 +84,30 @@
       "connected": {
         "name": "Connected"
       }
+    },
+    "event": {
+      "message_received": {
+        "name": "Message Received"
+      },
+      "tool_invoked": {
+        "name": "Tool Invoked"
+      }
+    },
+    "button": {
+      "clear_history": {
+        "name": "Clear History"
+      },
+      "sync_history": {
+        "name": "Sync History"
+      },
+      "run_diagnostics": {
+        "name": "Run Diagnostics"
+      }
+    },
+    "select": {
+      "active_model": {
+        "name": "Active Model"
+      }
     }
   },
   "services": {

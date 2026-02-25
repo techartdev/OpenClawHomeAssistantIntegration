@@ -106,7 +106,7 @@ DATA_LAST_TOOL_ERROR = "last_tool_error"
 DATA_LAST_TOOL_RESULT_PREVIEW = "last_tool_result_preview"
 
 # Platforms
-PLATFORMS = ["sensor", "binary_sensor", "conversation"]
+PLATFORMS = ["sensor", "binary_sensor", "conversation", "event", "button", "select"]
 
 # Events
 EVENT_MESSAGE_RECEIVED = f"{DOMAIN}_message_received"

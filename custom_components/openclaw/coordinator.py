@@ -66,6 +66,7 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.client = client
         self._last_activity: datetime | None = None
         self._model_cache: dict[str, Any] = {}
+        self._available_models: list[str] = []
         self._consecutive_failures = 0
         self._last_tool_state: dict[str, Any] = {
             DATA_LAST_TOOL_NAME: None,
@@ -147,6 +148,9 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     DATA_PROVIDER: current.get("owned_by"),
                     DATA_CONTEXT_WINDOW: current.get("context_window"),
                 }
+                self._available_models = [
+                    m.get("id") for m in models if m.get("id")
+                ]
         except OpenClawAuthError as err:
             _LOGGER.warning("Gateway auth failed during poll: %s", err)
             await self._try_refresh_token()
@@ -198,6 +202,11 @@ class OpenClawCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Called when a message is sent/received through the integration.
         """
         self._last_activity = datetime.now(timezone.utc)
+
+    @property
+    def available_models(self) -> list[str]:
+        """Return the list of model IDs from the last successful poll."""
+        return list(self._available_models)
 
     def record_tool_invocation(
         self,

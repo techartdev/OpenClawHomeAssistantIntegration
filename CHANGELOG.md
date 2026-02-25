@@ -2,6 +2,17 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.56] - 2026-02-25
+
+### Added
+- **Event entities** (`event.openclaw_message_received`, `event.openclaw_tool_invoked`) — native HA EventEntity entities that fire on each assistant reply and tool invocation result. Selectable in the automation UI without YAML.
+- **Button entities** — dashboard-friendly buttons for common actions:
+  - **Clear History** — clears in-memory conversation history
+  - **Sync History** — triggers a backend coordinator refresh
+  - **Run Diagnostics** — fires a connectivity check against the gateway
+- **Select entity** (`select.openclaw_active_model`) — exposes the list of available models from the gateway's `/v1/models` endpoint, allowing model switching from the HA dashboard. Selection is persisted in config entry options.
+- Coordinator now caches the full model list (not just the first model) and exposes it via `coordinator.available_models`.
+
 ## [0.1.55] - 2026-02-23
 
 ### Added
