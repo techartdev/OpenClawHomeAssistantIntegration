@@ -30,6 +30,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import OpenClawApiClient, OpenClawApiError
 from .const import (
+    ATTR_AGENT_ID,
     ATTR_ATTACHMENTS,
     ATTR_MESSAGE,
     ATTR_MODEL,
@@ -47,6 +48,7 @@ from .const import (
     ATTR_ACCOUNT_ID,
     ATTR_TIMESTAMP,
     CONF_ADDON_CONFIG_PATH,
+    CONF_AGENT_ID,
     CONF_GATEWAY_HOST,
     CONF_GATEWAY_PORT,
     CONF_GATEWAY_TOKEN,
@@ -63,6 +65,7 @@ from .const import (
     CONF_VOICE_PROVIDER,
     CONF_THINKING_TIMEOUT,
     CONTEXT_STRATEGY_TRUNCATE,
+    DEFAULT_AGENT_ID,
     DEFAULT_CONTEXT_MAX_CHARS,
     DEFAULT_CONTEXT_STRATEGY,
     DEFAULT_ENABLE_TOOL_CALLS,
@@ -106,6 +109,7 @@ SEND_MESSAGE_SCHEMA = vol.Schema(
         vol.Required(ATTR_MESSAGE): cv.string,
         vol.Optional(ATTR_SESSION_ID): cv.string,
         vol.Optional(ATTR_ATTACHMENTS): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_AGENT_ID): cv.string,
     }
 )
 
@@ -137,6 +141,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenClawConfigEntry) -> 
     verify_ssl = entry.data.get(CONF_VERIFY_SSL, True)
     session = async_get_clientsession(hass, verify_ssl=verify_ssl)
 
+    # agent_id can come from options (user-changeable) or from initial config data
+    agent_id: str = entry.options.get(
+        CONF_AGENT_ID, entry.data.get(CONF_AGENT_ID, DEFAULT_AGENT_ID)
+    )
+
     client = OpenClawApiClient(
         host=entry.data[CONF_GATEWAY_HOST],
         port=entry.data[CONF_GATEWAY_PORT],
@@ -144,6 +153,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenClawConfigEntry) -> 
         use_ssl=use_ssl,
         verify_ssl=verify_ssl,
         session=session,
+        agent_id=agent_id,
     )
 
     coordinator = OpenClawCoordinator(hass, client)
@@ -385,6 +395,8 @@ def _async_register_services(hass: HomeAssistant) -> None:
         """Handle the openclaw.send_message service call."""
         message: str = call.data[ATTR_MESSAGE]
         session_id: str = call.data.get(ATTR_SESSION_ID) or "default"
+        # Per-call agent_id overrides the client-level default when provided.
+        call_agent_id: str | None = call.data.get(ATTR_AGENT_ID)
 
         entry_data = _get_first_entry_data(hass)
         if not entry_data:
@@ -420,6 +432,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 message=message,
                 session_id=session_id,
                 system_prompt=system_prompt,
+                agent_id=call_agent_id,
             )
 
             if options.get(CONF_ENABLE_TOOL_CALLS, DEFAULT_ENABLE_TOOL_CALLS):
@@ -433,6 +446,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                         ),
                         session_id=session_id,
                         system_prompt=system_prompt,
+                        agent_id=call_agent_id,
                     )
 
             assistant_message = _extract_assistant_message(response)

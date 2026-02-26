@@ -51,6 +51,7 @@ class OpenClawApiClient:
         use_ssl: bool = False,
         verify_ssl: bool = True,
         session: aiohttp.ClientSession | None = None,
+        agent_id: str = "main",
     ) -> None:
         """Initialize the API client.
 
@@ -61,6 +62,7 @@ class OpenClawApiClient:
             use_ssl: Use HTTPS instead of HTTP.
             verify_ssl: Verify SSL certificates (set False for self-signed certs).
             session: Optional aiohttp session (reused from HA).
+            agent_id: Target OpenClaw agent ID (default: "main").
         """
         self._host = host
         self._port = port
@@ -68,6 +70,7 @@ class OpenClawApiClient:
         self._use_ssl = use_ssl
         self._verify_ssl = verify_ssl
         self._session = session
+        self._agent_id = agent_id
         self._base_url = f"{'https' if use_ssl else 'http'}://{host}:{port}"
         # ssl=False disables cert verification for self-signed certs;
         # ssl=None uses default verification.
@@ -82,11 +85,18 @@ class OpenClawApiClient:
         """Update the authentication token (e.g., after addon restart)."""
         self._token = token
 
-    def _headers(self) -> dict[str, str]:
-        """Build request headers with auth token."""
+    def _headers(self, agent_id: str | None = None) -> dict[str, str]:
+        """Build request headers with auth token and agent ID.
+
+        Args:
+            agent_id: Per-call agent ID override. Falls back to the
+                      client-level ``agent_id`` set in the constructor.
+        """
+        effective_agent = agent_id or self._agent_id or "main"
         return {
             "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json",
+            "x-openclaw-agent-id": effective_agent,
         }
 
     async def _get_session(self) -> aiohttp.ClientSession:
@@ -182,6 +192,7 @@ class OpenClawApiClient:
         model: str | None = None,
         system_prompt: str | None = None,
         stream: bool = False,
+        agent_id: str | None = None,
     ) -> dict[str, Any]:
         """Send a chat message (non-streaming).
 
@@ -190,6 +201,8 @@ class OpenClawApiClient:
             session_id: Optional session/conversation ID.
             model: Optional model override.
             stream: If True, raises ValueError (use async_stream_message).
+            agent_id: Optional per-call agent ID override (overrides the
+                      client-level default set in the constructor).
 
         Returns:
             Complete chat completion response.
@@ -213,7 +226,7 @@ class OpenClawApiClient:
             payload["model"] = model
 
         # Pass session_id as a custom header or param if supported by gateway
-        headers = self._headers()
+        headers = self._headers(agent_id=agent_id)
         if session_id:
             headers["X-Session-Id"] = session_id
             headers["x-openclaw-session-key"] = session_id
@@ -247,6 +260,7 @@ class OpenClawApiClient:
         session_id: str | None = None,
         model: str | None = None,
         system_prompt: str | None = None,
+        agent_id: str | None = None,
     ) -> AsyncIterator[str]:
         """Send a chat message and stream the response via SSE.
 
@@ -256,6 +270,8 @@ class OpenClawApiClient:
             message: The user message text.
             session_id: Optional session/conversation ID.
             model: Optional model override.
+            agent_id: Optional per-call agent ID override (overrides the
+                      client-level default set in the constructor).
 
         Yields:
             Content delta strings from the streaming response.
@@ -275,7 +291,7 @@ class OpenClawApiClient:
         if model:
             payload["model"] = model
 
-        headers = self._headers()
+        headers = self._headers(agent_id=agent_id)
         if session_id:
             headers["X-Session-Id"] = session_id
             headers["x-openclaw-session-key"] = session_id

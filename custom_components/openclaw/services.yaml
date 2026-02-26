@@ -24,6 +24,15 @@ send_message:
       selector:
         text:
           multiline: true
+    agent_id:
+      name: Agent ID
+      description: >
+        Optional OpenClaw agent ID to route this message to. Overrides the
+        agent ID configured in the integration options. Defaults to "main".
+      required: false
+      example: "main"
+      selector:
+        text:
 
 clear_history:
   name: Clear History

@@ -34,6 +34,7 @@ from .const import (
     ADDON_SLUG,
     ADDON_SLUG_FRAGMENTS,
     CONF_ADDON_CONFIG_PATH,
+    CONF_AGENT_ID,
     CONF_GATEWAY_HOST,
     CONF_GATEWAY_PORT,
     CONF_GATEWAY_TOKEN,
@@ -52,6 +53,7 @@ from .const import (
     BROWSER_VOICE_LANGUAGES,
     CONTEXT_STRATEGY_CLEAR,
     CONTEXT_STRATEGY_TRUNCATE,
+    DEFAULT_AGENT_ID,
     DEFAULT_GATEWAY_HOST,
     DEFAULT_GATEWAY_PORT,
     DEFAULT_CONTEXT_MAX_CHARS,
@@ -411,6 +413,7 @@ class OpenClawConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_GATEWAY_TOKEN: token,
                         CONF_USE_SSL: use_ssl,
                         CONF_VERIFY_SSL: verify_ssl,
+                        CONF_AGENT_ID: user_input.get(CONF_AGENT_ID, DEFAULT_AGENT_ID),
                     },
                 )
             if "base" not in errors:
@@ -429,6 +432,7 @@ class OpenClawConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_GATEWAY_TOKEN): str,
                     vol.Optional(CONF_USE_SSL, default=False): bool,
                     vol.Optional(CONF_VERIFY_SSL, default=True): bool,
+                    vol.Optional(CONF_AGENT_ID, default=DEFAULT_AGENT_ID): str,
                 }
             ),
             errors=errors,
@@ -453,6 +457,13 @@ class OpenClawOptionsFlow(OptionsFlow):
         selected_provider = options.get(CONF_VOICE_PROVIDER, DEFAULT_VOICE_PROVIDER)
 
         schema: dict[Any, Any] = {
+            vol.Optional(
+                CONF_AGENT_ID,
+                default=options.get(
+                    CONF_AGENT_ID,
+                    self._config_entry.data.get(CONF_AGENT_ID, DEFAULT_AGENT_ID),
+                ),
+            ): str,
             vol.Optional(
                 CONF_INCLUDE_EXPOSED_CONTEXT,
                 default=options.get(
