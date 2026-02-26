@@ -18,7 +18,8 @@
           "gateway_port": "Gateway Port",
           "gateway_token": "Gateway Token",
           "use_ssl": "Use SSL (HTTPS)",
-          "verify_ssl": "Verify SSL certificate"
+          "verify_ssl": "Verify SSL certificate",
+          "agent_id": "Agent ID"
         }
       }
     },
@@ -39,6 +40,7 @@
         "title": "OpenClaw Options",
         "description": "Configure context and tool-calling behavior.",
         "data": {
+          "agent_id": "Agent ID (e.g. main)",
           "include_exposed_context": "Include exposed entities context",
           "context_max_chars": "Max context characters",
           "context_strategy": "When context exceeds max",
@@ -126,6 +128,10 @@
         "attachments": {
           "name": "Attachments",
           "description": "Optional file attachments."
+        },
+        "agent_id": {
+          "name": "Agent ID",
+          "description": "Optional OpenClaw agent ID to route this message to. Overrides the configured default. Defaults to \"main\"."
         }
       }
     },

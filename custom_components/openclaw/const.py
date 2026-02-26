@@ -23,6 +23,7 @@ CONF_GATEWAY_TOKEN = "gateway_token"
 CONF_USE_SSL = "use_ssl"
 CONF_VERIFY_SSL = "verify_ssl"
 CONF_ADDON_CONFIG_PATH = "addon_config_path"
+CONF_AGENT_ID = "agent_id"
 
 # Options
 CONF_INCLUDE_EXPOSED_CONTEXT = "include_exposed_context"
@@ -36,6 +37,7 @@ CONF_VOICE_PROVIDER = "voice_provider"
 CONF_BROWSER_VOICE_LANGUAGE = "browser_voice_language"
 CONF_THINKING_TIMEOUT = "thinking_timeout"
 
+DEFAULT_AGENT_ID = "main"
 DEFAULT_INCLUDE_EXPOSED_CONTEXT = True
 DEFAULT_CONTEXT_MAX_CHARS = 13000
 DEFAULT_CONTEXT_STRATEGY = "truncate"
@@ -130,6 +132,7 @@ ATTR_SESSION_KEY = "session_key"
 ATTR_DRY_RUN = "dry_run"
 ATTR_MESSAGE_CHANNEL = "message_channel"
 ATTR_ACCOUNT_ID = "account_id"
+ATTR_AGENT_ID = "agent_id"
 ATTR_OK = "ok"
 ATTR_RESULT = "result"
 ATTR_ERROR = "error"
