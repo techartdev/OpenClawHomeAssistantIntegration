@@ -23,6 +23,10 @@ API_TIMEOUT = aiohttp.ClientTimeout(total=10)
 # Timeout for streaming chat completions (long-running)
 STREAM_TIMEOUT = aiohttp.ClientTimeout(total=300, sock_read=120)
 
+# Retry config for transient connection failures
+_MAX_RETRIES = 2
+_RETRY_DELAY = 1.0  # seconds
+
 
 class OpenClawApiError(Exception):
     """Base exception for OpenClaw API errors."""
@@ -52,6 +56,7 @@ class OpenClawApiClient:
         verify_ssl: bool = True,
         session: aiohttp.ClientSession | None = None,
         agent_id: str = "main",
+        debug_logging: bool = False,
     ) -> None:
         """Initialize the API client.
 
@@ -71,6 +76,7 @@ class OpenClawApiClient:
         self._verify_ssl = verify_ssl
         self._session = session
         self._agent_id = agent_id
+        self._debug_logging = debug_logging
         self._base_url = f"{'https' if use_ssl else 'http'}://{host}:{port}"
         # ssl=False disables cert verification for self-signed certs;
         # ssl=None uses default verification.
@@ -84,6 +90,20 @@ class OpenClawApiClient:
     def update_token(self, token: str) -> None:
         """Update the authentication token (e.g., after addon restart)."""
         self._token = token
+
+
+    def _log_request(self, label: str, agent_id: str | None, model: str | None, session_id: str | None, headers: dict[str, str]) -> None:
+        if not self._debug_logging:
+            return
+        safe_headers = {k: ("<redacted>" if k.lower() == "authorization" else v) for k, v in headers.items()}
+        _LOGGER.warning(
+            "OpenClaw API %s: agent=%s model=%s session=%s headers=%s",
+            label,
+            agent_id or self._agent_id or "main",
+            model,
+            session_id,
+            safe_headers,
+        )
 
     def _headers(
         self,
@@ -102,8 +122,21 @@ class OpenClawApiClient:
         return headers
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create an aiohttp session."""
-        if self._session is None or self._session.closed:
+        """Get the aiohttp session.
+
+        Prefers the HA-managed session passed in the constructor.
+        Falls back to creating a new session only if none was provided.
+        """
+        if self._session is not None and not self._session.closed:
+            return self._session
+        if self._session is None:
+            # No session was provided at init; create one as last resort
+            _LOGGER.debug("Creating fallback aiohttp session (no HA session provided)")
+            self._session = aiohttp.ClientSession()
+        else:
+            # Session was provided but is now closed; this shouldn't happen
+            # with HA-managed sessions, but handle gracefully
+            _LOGGER.warning("HA-managed aiohttp session was closed unexpectedly, creating replacement")
             self._session = aiohttp.ClientSession()
         return self._session
 
@@ -227,6 +260,8 @@ class OpenClawApiClient:
             payload["user"] = session_id
         if model:
             payload["model"] = model
+        elif agent_id:
+            payload["model"] = f"openclaw:{agent_id}"
 
         # Pass session_id as a custom header or param if supported by gateway
         headers = self._headers(agent_id=agent_id, extra_headers=extra_headers)
@@ -236,6 +271,8 @@ class OpenClawApiClient:
 
         session = await self._get_session()
         url = f"{self._base_url}{API_CHAT_COMPLETIONS}"
+
+        self._log_request("chat", agent_id, payload.get("model"), session_id, headers)
 
         try:
             async with session.post(
@@ -256,6 +293,21 @@ class OpenClawApiClient:
             raise OpenClawConnectionError(
                 f"Cannot connect to OpenClaw gateway: {err}"
             ) from err
+
+    async def async_send_message_with_retry(self, **kwargs: Any) -> dict[str, Any]:
+        """Send a message with automatic retry on transient connection failures."""
+        last_err: Exception | None = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                return await self.async_send_message(**kwargs)
+            except OpenClawConnectionError as err:
+                last_err = err
+                if attempt < _MAX_RETRIES:
+                    _LOGGER.debug("Connection failed (attempt %d/%d), retrying in %ss", attempt + 1, _MAX_RETRIES + 1, _RETRY_DELAY)
+                    await asyncio.sleep(_RETRY_DELAY)
+            except OpenClawAuthError:
+                raise  # Don't retry auth errors
+        raise last_err  # type: ignore[misc]
 
     async def async_stream_message(
         self,
@@ -294,6 +346,8 @@ class OpenClawApiClient:
             payload["user"] = session_id
         if model:
             payload["model"] = model
+        elif agent_id:
+            payload["model"] = f"openclaw:{agent_id}"
 
         headers = self._headers(agent_id=agent_id, extra_headers=extra_headers)
         if session_id:
@@ -302,6 +356,8 @@ class OpenClawApiClient:
 
         session = await self._get_session()
         url = f"{self._base_url}{API_CHAT_COMPLETIONS}"
+
+        self._log_request("chat", agent_id, payload.get("model"), session_id, headers)
 
         try:
             async with session.post(

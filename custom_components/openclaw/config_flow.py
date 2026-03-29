@@ -37,7 +37,6 @@ from .const import (
     ADDON_SLUG_FRAGMENTS,
     CONF_ADDON_CONFIG_PATH,
     CONF_AGENT_ID,
-    CONF_ASSIST_SESSION_ID,
     CONF_GATEWAY_HOST,
     CONF_GATEWAY_PORT,
     CONF_GATEWAY_TOKEN,
@@ -54,11 +53,11 @@ from .const import (
     CONF_BROWSER_VOICE_LANGUAGE,
     CONF_VOICE_PROVIDER,
     CONF_THINKING_TIMEOUT,
+    CONF_DEBUG_LOGGING,
     BROWSER_VOICE_LANGUAGES,
     CONTEXT_STRATEGY_CLEAR,
     CONTEXT_STRATEGY_TRUNCATE,
     DEFAULT_AGENT_ID,
-    DEFAULT_ASSIST_SESSION_ID,
     DEFAULT_GATEWAY_HOST,
     DEFAULT_GATEWAY_PORT,
     DEFAULT_CONTEXT_MAX_CHARS,
@@ -71,6 +70,7 @@ from .const import (
     DEFAULT_BROWSER_VOICE_LANGUAGE,
     DEFAULT_VOICE_PROVIDER,
     DEFAULT_THINKING_TIMEOUT,
+    DEFAULT_DEBUG_LOGGING,
     DEFAULT_VOICE_AGENT_ID,
     DOMAIN,
     OPENCLAW_CONFIG_REL_PATH,
@@ -82,7 +82,9 @@ _LOGGER = logging.getLogger(__name__)
 # ── Filesystem helpers ────────────────────────────────────────────────────────
 
 def _find_addon_config_dir() -> Path | None:
-    """Scan /addon_configs/ for the OpenClaw addon directory.
+    """Scan /addon_configs/ for the OpenClaw addon directory (blocking I/O).
+
+    Must be called via hass.async_add_executor_job() from async code.
 
     The Supervisor prepends a repository-specific hash to the addon slug:
         /addon_configs/<hash>_<addon_name>/
@@ -478,13 +480,6 @@ class OpenClawOptionsFlow(OptionsFlowWithReload):
                 ),
             ): str,
             vol.Optional(
-                CONF_ASSIST_SESSION_ID,
-                default=options.get(
-                    CONF_ASSIST_SESSION_ID,
-                    DEFAULT_ASSIST_SESSION_ID,
-                ),
-            ): str,
-            vol.Optional(
                 CONF_INCLUDE_EXPOSED_CONTEXT,
                 default=options.get(
                     CONF_INCLUDE_EXPOSED_CONTEXT,
@@ -537,6 +532,13 @@ class OpenClawOptionsFlow(OptionsFlowWithReload):
                 CONF_VOICE_PROVIDER,
                 default=selected_provider,
             ): vol.In(["browser", "assist_stt"]),
+            vol.Optional(
+                CONF_DEBUG_LOGGING,
+                default=options.get(
+                    CONF_DEBUG_LOGGING,
+                    DEFAULT_DEBUG_LOGGING,
+                ),
+            ): bool,
             vol.Optional(
                 CONF_THINKING_TIMEOUT,
                 default=options.get(

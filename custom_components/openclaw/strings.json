@@ -40,7 +40,6 @@
         "data": {
           "agent_id": "Agent ID (e.g. main)",
           "voice_agent_id": "Voice agent ID (optional)",
-          "assist_session_id": "Assist session ID override (optional)",
           "include_exposed_context": "Include exposed entities context",
           "context_max_chars": "Max context characters",
           "context_strategy": "When context exceeds max",

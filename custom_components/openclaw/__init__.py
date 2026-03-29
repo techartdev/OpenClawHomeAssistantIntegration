@@ -29,6 +29,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import OpenClawApiClient, OpenClawApiError
+from .utils import extract_text_recursive, normalize_optional_text
 from .const import (
     ATTR_AGENT_ID,
     ATTR_ATTACHMENTS,
@@ -66,6 +67,7 @@ from .const import (
     CONF_BROWSER_VOICE_LANGUAGE,
     CONF_VOICE_PROVIDER,
     CONF_THINKING_TIMEOUT,
+    CONF_DEBUG_LOGGING,
     CONTEXT_STRATEGY_TRUNCATE,
     DEFAULT_AGENT_ID,
     DEFAULT_VOICE_AGENT_ID,
@@ -79,6 +81,7 @@ from .const import (
     DEFAULT_BROWSER_VOICE_LANGUAGE,
     DEFAULT_VOICE_PROVIDER,
     DEFAULT_THINKING_TIMEOUT,
+    DEFAULT_DEBUG_LOGGING,
     DOMAIN,
     EVENT_MESSAGE_RECEIVED,
     EVENT_TOOL_INVOKED,
@@ -162,6 +165,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenClawConfigEntry) -> 
         verify_ssl=verify_ssl,
         session=session,
         agent_id=agent_id,
+        debug_logging=entry.options.get(CONF_DEBUG_LOGGING, DEFAULT_DEBUG_LOGGING),
     )
 
     coordinator = OpenClawCoordinator(hass, client)
@@ -399,18 +403,12 @@ async def _async_add_lovelace_resource(hass: HomeAssistant, url: str) -> bool:
 def _async_register_services(hass: HomeAssistant) -> None:
     """Register openclaw.send_message and openclaw.clear_history services."""
 
-    def _normalize_optional_text(value: Any) -> str | None:
-        if not isinstance(value, str):
-            return None
-        cleaned = value.strip()
-        return cleaned or None
-
     async def handle_send_message(call: ServiceCall) -> None:
         """Handle the openclaw.send_message service call."""
         message: str = call.data[ATTR_MESSAGE]
         source: str | None = call.data.get(ATTR_SOURCE)
         session_id: str = call.data.get(ATTR_SESSION_ID) or "default"
-        call_agent_id = _normalize_optional_text(call.data.get(ATTR_AGENT_ID))
+        call_agent_id = normalize_optional_text(call.data.get(ATTR_AGENT_ID))
         extra_headers = _VOICE_REQUEST_HEADERS if source == "voice" else None
 
         entry_data = _get_first_entry_data(hass)
@@ -421,7 +419,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
         client: OpenClawApiClient = entry_data["client"]
         coordinator: OpenClawCoordinator = entry_data["coordinator"]
         options = _get_entry_options(hass, entry_data)
-        voice_agent_id = _normalize_optional_text(
+        voice_agent_id = normalize_optional_text(
             options.get(CONF_VOICE_AGENT_ID, DEFAULT_VOICE_AGENT_ID)
         )
         resolved_agent_id = call_agent_id
@@ -635,53 +633,6 @@ def _get_entry_options(hass: HomeAssistant, entry_data: dict[str, Any]) -> dict[
     return latest_entry.options if latest_entry else {}
 
 
-def _extract_text_recursive(value: Any, depth: int = 0) -> str | None:
-    """Recursively extract assistant text from nested response payloads."""
-    if depth > 8:
-        return None
-
-    if isinstance(value, str):
-        text = value.strip()
-        return text or None
-
-    if isinstance(value, list):
-        parts: list[str] = []
-        for item in value:
-            extracted = _extract_text_recursive(item, depth + 1)
-            if extracted:
-                parts.append(extracted)
-        if parts:
-            return "\n".join(parts)
-        return None
-
-    if isinstance(value, dict):
-        priority_keys = (
-            "output_text",
-            "text",
-            "content",
-            "message",
-            "response",
-            "answer",
-            "choices",
-            "output",
-            "delta",
-        )
-
-        for key in priority_keys:
-            if key not in value:
-                continue
-            extracted = _extract_text_recursive(value.get(key), depth + 1)
-            if extracted:
-                return extracted
-
-        for nested_value in value.values():
-            extracted = _extract_text_recursive(nested_value, depth + 1)
-            if extracted:
-                return extracted
-
-    return None
-
-
 def _summarize_tool_result(value: Any, max_len: int = 240) -> str | None:
     """Return compact string preview of tool result payload."""
     if value is None:
@@ -703,7 +654,7 @@ def _summarize_tool_result(value: Any, max_len: int = 240) -> str | None:
 
 def _extract_assistant_message(response: dict[str, Any]) -> str | None:
     """Extract assistant text from modern/legacy OpenAI-compatible responses."""
-    return _extract_text_recursive(response)
+    return extract_text_recursive(response)
 
 
 def _extract_tool_calls(response: dict[str, Any]) -> list[dict[str, Any]]:
@@ -879,6 +830,10 @@ def _async_register_websocket_api(hass: HomeAssistant) -> None:
                 CONF_THINKING_TIMEOUT: options.get(
                     CONF_THINKING_TIMEOUT,
                     DEFAULT_THINKING_TIMEOUT,
+                ),
+                CONF_DEBUG_LOGGING: options.get(
+                    CONF_DEBUG_LOGGING,
+                    DEFAULT_DEBUG_LOGGING,
                 ),
                 "language": hass.config.language,
             },
