@@ -17,13 +17,6 @@ send_message:
       example: "my-automation-session"
       selector:
         text:
-    attachments:
-      name: Attachments
-      description: Optional list of file paths to attach to the message.
-      required: false
-      selector:
-        text:
-          multiline: true
     agent_id:
       name: Agent ID
       description: >
