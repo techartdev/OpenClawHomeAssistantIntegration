@@ -53,10 +53,6 @@ async def async_setup_entry(
     ]
     async_add_entities(entities)
 
-    # Wire HA bus events → entity triggers
-    for entity in entities:
-        entity.async_start_listening(hass)
-
 
 class OpenClawEventEntity(EventEntity):
     """Event entity that mirrors HA bus events into the entity registry."""
@@ -80,9 +76,9 @@ class OpenClawEventEntity(EventEntity):
         self._entry_id = entry.entry_id
         self._unsub: callback | None = None
 
-    @callback
-    def async_start_listening(self, hass: HomeAssistant) -> None:
-        """Subscribe to the matching HA bus event."""
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to the matching HA bus event when entity is added."""
+        await super().async_added_to_hass()
         key = self.entity_description.key
 
         if key == "message_received":
@@ -103,7 +99,7 @@ class OpenClawEventEntity(EventEntity):
                 self._trigger_event(event_type, data)
             self.async_write_ha_state()
 
-        self._unsub = hass.bus.async_listen(bus_event, _handle_event)
+        self._unsub = self.hass.bus.async_listen(bus_event, _handle_event)
 
     async def async_will_remove_from_hass(self) -> None:
         """Unsubscribe when entity is removed."""

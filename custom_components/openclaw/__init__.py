@@ -31,7 +31,6 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import OpenClawApiClient, OpenClawApiError
 from .const import (
     ATTR_AGENT_ID,
-    ATTR_ATTACHMENTS,
     ATTR_MESSAGE,
     ATTR_MODEL,
     ATTR_OK,
@@ -90,6 +89,7 @@ from .const import (
 )
 from .coordinator import OpenClawCoordinator
 from .exposure import apply_context_policy, build_exposed_entities_context
+from .helpers import extract_text_recursive
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 # URL at which the card JS is served (registered via register_static_path)
 _CARD_STATIC_URL = f"/openclaw/{_CARD_FILENAME}"
 # Versioned URL used for Lovelace resource registration to avoid stale browser cache
-_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.60"
+_CARD_URL = f"{_CARD_STATIC_URL}?v=0.1.61"
 
 OpenClawConfigEntry = ConfigEntry
 
@@ -117,7 +117,6 @@ SEND_MESSAGE_SCHEMA = vol.Schema(
         vol.Required(ATTR_MESSAGE): cv.string,
         vol.Optional(ATTR_SOURCE): cv.string,
         vol.Optional(ATTR_SESSION_ID): cv.string,
-        vol.Optional(ATTR_ATTACHMENTS): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional(ATTR_AGENT_ID): cv.string,
     }
 )
@@ -446,6 +445,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 else None
             )
             system_prompt = apply_context_policy(raw_context, max_chars, strategy)
+            active_model = _normalize_optional_text(options.get("active_model"))
 
             _append_chat_history(hass, session_id, "user", message)
 
@@ -454,6 +454,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 session_id=session_id,
                 system_prompt=system_prompt,
                 agent_id=resolved_agent_id,
+                model=active_model,
                 extra_headers=extra_headers,
             )
 
@@ -469,6 +470,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                         session_id=session_id,
                         system_prompt=system_prompt,
                         agent_id=resolved_agent_id,
+                        model=active_model,
                         extra_headers=extra_headers,
                     )
 
@@ -635,53 +637,6 @@ def _get_entry_options(hass: HomeAssistant, entry_data: dict[str, Any]) -> dict[
     return latest_entry.options if latest_entry else {}
 
 
-def _extract_text_recursive(value: Any, depth: int = 0) -> str | None:
-    """Recursively extract assistant text from nested response payloads."""
-    if depth > 8:
-        return None
-
-    if isinstance(value, str):
-        text = value.strip()
-        return text or None
-
-    if isinstance(value, list):
-        parts: list[str] = []
-        for item in value:
-            extracted = _extract_text_recursive(item, depth + 1)
-            if extracted:
-                parts.append(extracted)
-        if parts:
-            return "\n".join(parts)
-        return None
-
-    if isinstance(value, dict):
-        priority_keys = (
-            "output_text",
-            "text",
-            "content",
-            "message",
-            "response",
-            "answer",
-            "choices",
-            "output",
-            "delta",
-        )
-
-        for key in priority_keys:
-            if key not in value:
-                continue
-            extracted = _extract_text_recursive(value.get(key), depth + 1)
-            if extracted:
-                return extracted
-
-        for nested_value in value.values():
-            extracted = _extract_text_recursive(nested_value, depth + 1)
-            if extracted:
-                return extracted
-
-    return None
-
-
 def _summarize_tool_result(value: Any, max_len: int = 240) -> str | None:
     """Return compact string preview of tool result payload."""
     if value is None:
@@ -703,7 +658,7 @@ def _summarize_tool_result(value: Any, max_len: int = 240) -> str | None:
 
 def _extract_assistant_message(response: dict[str, Any]) -> str | None:
     """Extract assistant text from modern/legacy OpenAI-compatible responses."""
-    return _extract_text_recursive(response)
+    return extract_text_recursive(response)
 
 
 def _extract_tool_calls(response: dict[str, Any]) -> list[dict[str, Any]]:

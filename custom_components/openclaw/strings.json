@@ -125,10 +125,6 @@
           "name": "Session ID",
           "description": "Optional session ID for conversation context."
         },
-        "attachments": {
-          "name": "Attachments",
-          "description": "Optional file attachments."
-        },
         "agent_id": {
           "name": "Agent ID",
           "description": "Optional OpenClaw agent ID to route this message to. Overrides the configured default. Defaults to \"main\"."
