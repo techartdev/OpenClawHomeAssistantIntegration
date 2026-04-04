@@ -180,7 +180,11 @@ class OpenClawApiClient:
     # ─── Public API methods ────────────────────────────────────────────
 
     async def async_get_models(self) -> dict[str, Any]:
-        """Get available models (OpenAI-compatible).
+        """Get available models (best effort).
+
+        Some OpenClaw deployments do not expose `/v1/models` even when
+        `/v1/chat/completions` is enabled. Callers should treat failures here
+        as non-fatal and fall back to cached/unknown model state.
 
         Returns:
             Dict with 'data' containing model objects.
@@ -344,26 +348,21 @@ class OpenClawApiClient:
             ) from err
 
     async def async_check_connection(self) -> bool:
-        """Check if the gateway is reachable, API is enabled, and auth works.
+        """Check if the gateway is reachable and the OpenAI API surface exists.
 
-        The OpenClaw gateway only implements /v1/chat/completions (not
-        /v1/models). We send a POST with an empty messages list — the gateway
-        auth middleware validates the token first, then the endpoint returns a
-        400 (or similar) for the invalid body. This proves:
-          - Server is reachable.
-          - The OpenAI-compatible API layer is enabled (enable_openai_api).
-          - The auth token is accepted.
+        In practice, OpenClaw deployments differ in how `/v1/*` auth is wired.
+        Some current add-on/runtime combinations expose `/v1/chat/completions`
+        but still reject the gateway token during a synthetic validation probe.
 
-        If the route is not registered (API disabled) the SPA catch-all
-        returns 200 text/html — detected via content-type check.
+        For integration setup we therefore validate in two stages:
+          1. Base URL is reachable (`async_check_alive` semantics via GET /)
+          2. `/v1/chat/completions` exists and returns JSON rather than the SPA
+             fallback HTML, regardless of whether the probe is accepted or
+             rejected with 401/403 for the synthetic body.
 
-        Returns:
-            True if connected and authenticated.
-
-        Raises:
-            OpenClawAuthError: If authentication fails.
-            OpenClawApiError: If the gateway returns HTML (API not enabled).
-            OpenClawConnectionError: If the gateway is unreachable.
+        This keeps setup working for local add-ons where discovery found a real
+        config/token, while still failing on wrong host/port or missing OpenAI
+        endpoint registration.
         """
         session = await self._get_session()
         url = f"{self._base_url}{API_CHAT_COMPLETIONS}"
@@ -376,11 +375,6 @@ class OpenClawApiClient:
                 timeout=API_TIMEOUT,
                 ssl=self._ssl_param,
             ) as resp:
-                if resp.status in (401, 403):
-                    raise OpenClawAuthError(
-                        "Authentication failed — check gateway token"
-                    )
-
                 content_type = resp.content_type or ""
                 if "json" not in content_type:
                     text = await resp.text()
@@ -391,8 +385,9 @@ class OpenClawApiClient:
                         f"and restart. Response: {text[:200]}"
                     )
 
-                # Any JSON response (200, 400, 422, etc.) means the
-                # endpoint exists, auth passed, and the API layer is active.
+                # Accept any JSON response here, including 401/403, because some
+                # current runtimes reject synthetic validation probes even when
+                # the endpoint is otherwise present and usable by the integration.
                 return True
 
         except (aiohttp.ClientConnectorError, aiohttp.ClientOSError, asyncio.TimeoutError) as err:

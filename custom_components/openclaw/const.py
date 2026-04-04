@@ -3,7 +3,8 @@
 DOMAIN = "openclaw"
 
 # Addon
-ADDON_SLUG = "openclaw_assistant_dev"
+# Primary slug used by the stable addon; discovery also scans by fragment.
+ADDON_SLUG = "openclaw_assistant"
 # The Supervisor prefixes a repo hash to the slug in the filesystem path
 #   e.g. /addon_configs/0bfc167e_openclaw_assistant
 # We cannot hardcode this — it must be discovered at runtime.
@@ -13,7 +14,10 @@ OPENCLAW_CONFIG_REL_PATH = ".openclaw/openclaw.json"
 
 # Defaults
 DEFAULT_GATEWAY_HOST = "127.0.0.1"
-DEFAULT_GATEWAY_PORT = 18789
+# Historical default for the HA addon has varied (18789/18790).
+# Keep 18790 as the current default and let addon discovery override from
+# Supervisor options or openclaw.json when available.
+DEFAULT_GATEWAY_PORT = 18790
 DEFAULT_SCAN_INTERVAL = 30  # seconds
 
 # Config entry keys

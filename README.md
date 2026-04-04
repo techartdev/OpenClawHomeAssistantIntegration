@@ -57,6 +57,7 @@ The integration supports connecting to OpenClaw in several ways:
 If the OpenClaw Assistant addon is installed on the **same** Home Assistant instance, the integration auto-discovers it:
 - Reads token from the shared filesystem
 - Detects `access_mode` and chooses the correct port automatically
+- Supports current local addon ports discovered from Supervisor/openclaw.json (for example 18789 or 18790)
 - No manual config needed — just click **Submit** on the confirm step
 
 > **`lan_https` mode**: The integration automatically connects to the internal gateway port (plain HTTP on loopback), bypassing the HTTPS proxy entirely. No certificate setup required.
@@ -85,7 +86,7 @@ You can connect to **any reachable OpenClaw gateway** — whether it's the HA ad
 2. Auto-discovery will fail (no local addon) — you'll see the **Manual Configuration** form
 3. Fill in:
    - **Gateway Host**: IP or hostname of the remote machine (e.g. `192.168.1.50`)
-   - **Gateway Port**: The gateway port (default `18789`)
+   - **Gateway Port**: The gateway port (current addon installs commonly use `18790`; older setups may still use `18789`)
    - **Gateway Token**: Auth token from the remote `openclaw.json`
    - **Use SSL (HTTPS)**: Check if connecting to an HTTPS endpoint
    - **Verify SSL certificate**: Uncheck for self-signed certificates (e.g. `lan_https` mode)
@@ -94,11 +95,11 @@ You can connect to **any reachable OpenClaw gateway** — whether it's the HA ad
 
 | Remote access mode | Host | Port | Use SSL | Verify SSL | Notes |
 |---|---|---|---|---|---|
-| Standalone OpenClaw (plain HTTP on LAN) | Remote IP | 18789 | ❌ | — | Default `openclaw gateway run` config |
-| `lan_https` (addon built-in HTTPS proxy) | Remote IP | 18789 | ✅ | ❌ | Self-signed cert; disable verification |
+| Standalone OpenClaw (plain HTTP on LAN) | Remote IP | 18789/18790 | ❌ | — | Check the actual gateway port in runtime/config |
+| `lan_https` (addon built-in HTTPS proxy) | Remote IP | 18789/18790 | ✅ | ❌ | Self-signed cert; disable verification |
 | Behind reverse proxy (NPM/Caddy with Let's Encrypt) | Domain or IP | 443 | ✅ | ✅ | Trusted cert from a real CA |
-| Plain HTTP addon on LAN | Remote IP | 18789 | ❌ | — | Addon `bind_mode` must be `lan` |
-| Tailscale | Tailscale IP | 18789 | ❌ | — | Encrypted tunnel; plain HTTP is fine |
+| Plain HTTP addon on LAN | Remote IP | 18789/18790 | ❌ | — | Addon `bind_mode` must be `lan`; use the actual configured port |
+| Tailscale | Tailscale IP | 18789/18790 | ❌ | — | Encrypted tunnel; plain HTTP is fine |
 
 > **Security note**: Avoid exposing plain HTTP gateways to the public internet. Use `lan_https`, a reverse proxy with TLS, or Tailscale for remote access.
 
