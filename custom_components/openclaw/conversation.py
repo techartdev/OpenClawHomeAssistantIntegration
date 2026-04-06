@@ -466,8 +466,8 @@ class OpenClawConversationAgent(
         text = response.strip()
 
         # Check if the response ends with a question mark
-        # (allow trailing punctuation like quotes or parens)
-        if re.search(r"\?\s*['\")\]]*\s*$", text):
+        # (allow trailing punctuation like quotes, parens, or emoji)
+        if re.search(r"\?\s*[\"'""»)\]]*\s*$", text):
             return True
 
         # Common follow-up patterns (EN + DE)
