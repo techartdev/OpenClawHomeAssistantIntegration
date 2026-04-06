@@ -9,13 +9,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import logging
 import re
-from typing import Any
+from typing import Any, AsyncIterator
 
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import chat_session, intent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers import intent
 
 from .api import OpenClawApiClient, OpenClawApiError
 from .const import (
@@ -57,8 +57,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the OpenClaw conversation agent."""
-    agent = OpenClawConversationAgent(hass, entry)
-    conversation.async_set_agent(hass, entry, agent)
+    async_add_entities([OpenClawConversationAgent(hass, entry)])
 
 
 async def async_unload_entry(
@@ -66,21 +65,37 @@ async def async_unload_entry(
     entry: ConfigEntry,
 ) -> bool:
     """Unload the conversation agent."""
-    conversation.async_unset_agent(hass, entry)
     return True
 
 
-class OpenClawConversationAgent(conversation.AbstractConversationAgent):
+class OpenClawConversationAgent(
+    conversation.ConversationEntity,
+    conversation.AbstractConversationAgent,
+):
     """Conversation agent that routes messages through OpenClaw.
 
     Enables OpenClaw to appear as a selectable agent in the Assist pipeline,
     allowing use with Voice PE, satellites, and the built-in HA Assist dialog.
     """
 
+    _attr_supports_streaming = True
+
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the conversation agent."""
         self.hass = hass
         self.entry = entry
+        self._attr_unique_id = entry.entry_id
+        self._attr_name = entry.title or "OpenClaw"
+
+    async def async_added_to_hass(self) -> None:
+        """Register the entity-backed agent when added to Home Assistant."""
+        await super().async_added_to_hass()
+        conversation.async_set_agent(self.hass, self.entry, self)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unregister the entity-backed agent when removed from Home Assistant."""
+        conversation.async_unset_agent(self.hass, self.entry)
+        await super().async_will_remove_from_hass()
 
     @property
     def attribution(self) -> dict[str, str]:
@@ -132,7 +147,6 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
             )
         )
         resolved_agent_id = voice_agent_id or configured_agent_id
-        conversation_id = self._resolve_conversation_id(user_input, resolved_agent_id)
         active_model = self._normalize_optional_text(options.get("active_model"))
         include_context = options.get(
             CONF_INCLUDE_EXPOSED_CONTEXT,
@@ -154,15 +168,20 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
         system_prompt = "\n\n".join(
             part for part in (exposed_context, extra_system_prompt) if part
         ) or None
+        backend_conversation_id = self._resolve_conversation_id(
+            user_input,
+            resolved_agent_id,
+        )
 
         try:
-            full_response = await self._get_response(
-                client,
-                message,
-                conversation_id,
-                resolved_agent_id,
-                system_prompt,
-                active_model,
+            full_response, result = await self._async_process_with_chat_log(
+                user_input=user_input,
+                client=client,
+                backend_conversation_id=backend_conversation_id,
+                message=message,
+                agent_id=resolved_agent_id,
+                system_prompt=system_prompt,
+                model=active_model,
             )
         except OpenClawApiError as err:
             _LOGGER.error("OpenClaw conversation error: %s", err)
@@ -173,13 +192,14 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
                 refreshed = await refresh_fn()
                 if refreshed:
                     try:
-                        full_response = await self._get_response(
-                            client,
-                            message,
-                            conversation_id,
-                            resolved_agent_id,
-                            system_prompt,
-                            active_model,
+                        full_response, result = await self._async_process_with_chat_log(
+                            user_input=user_input,
+                            client=client,
+                            backend_conversation_id=backend_conversation_id,
+                            message=message,
+                            agent_id=resolved_agent_id,
+                            system_prompt=system_prompt,
+                            model=active_model,
                         )
                     except OpenClawApiError as retry_err:
                         return self._error_result(
@@ -202,21 +222,15 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
             EVENT_MESSAGE_RECEIVED,
             {
                 ATTR_MESSAGE: full_response,
-                ATTR_SESSION_ID: conversation_id,
-                ATTR_MODEL: coordinator.data.get(DATA_MODEL) if coordinator.data else None,
+                ATTR_SESSION_ID: backend_conversation_id,
+                ATTR_MODEL: (
+                    coordinator.data.get(DATA_MODEL) if coordinator.data else None
+                ),
                 ATTR_TIMESTAMP: datetime.now(timezone.utc).isoformat(),
             },
         )
         coordinator.update_last_activity()
-
-        intent_response = intent.IntentResponse(language=user_input.language)
-        intent_response.async_set_speech(full_response)
-
-        return conversation.ConversationResult(
-            response=intent_response,
-            conversation_id=conversation_id,
-            continue_conversation=self._should_continue(full_response),
-        )
+        return result
 
     def _resolve_conversation_id(
         self,
@@ -269,21 +283,7 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
         system_prompt: str | None = None,
         model: str | None = None,
     ) -> str:
-        """Get a response from OpenClaw, trying streaming first."""
-        full_response = ""
-        async for chunk in client.async_stream_message(
-            message=message,
-            session_id=conversation_id,
-            model=model,
-            system_prompt=system_prompt,
-            agent_id=agent_id,
-            extra_headers=_VOICE_REQUEST_HEADERS,
-        ):
-            full_response += chunk
-
-        if full_response:
-            return full_response
-
+        """Get a non-streaming response from OpenClaw."""
         response = await client.async_send_message(
             message=message,
             session_id=conversation_id,
@@ -293,6 +293,153 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
             extra_headers=_VOICE_REQUEST_HEADERS,
         )
         return extract_text_recursive(response) or ""
+
+    async def _async_process_with_chat_log(
+        self,
+        user_input: conversation.ConversationInput,
+        client: OpenClawApiClient,
+        backend_conversation_id: str,
+        message: str,
+        agent_id: str | None = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+    ) -> tuple[str, conversation.ConversationResult]:
+        """Write the assistant response into the Home Assistant chat log."""
+        chat_log_conversation_id = user_input.conversation_id or backend_conversation_id
+
+        with (
+            chat_session.async_get_chat_session(
+                self.hass,
+                chat_log_conversation_id,
+            ) as session,
+            conversation.async_get_chat_log(
+                self.hass,
+                session,
+                user_input,
+            ) as chat_log,
+        ):
+            full_response = await self._async_populate_chat_log(
+                chat_log=chat_log,
+                client=client,
+                message=message,
+                conversation_id=backend_conversation_id,
+                agent_id=agent_id,
+                system_prompt=system_prompt,
+                model=model,
+            )
+            result = conversation.async_get_result_from_chat_log(user_input, chat_log)
+            result.continue_conversation = (
+                self._should_continue(full_response) or result.continue_conversation
+            )
+            return full_response, result
+
+    async def _async_populate_chat_log(
+        self,
+        chat_log: conversation.ChatLog,
+        client: OpenClawApiClient,
+        message: str,
+        conversation_id: str,
+        agent_id: str | None = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+    ) -> str:
+        """Populate the HA chat log from streaming or fallback responses."""
+        try:
+            full_response = await self._async_stream_response_to_chat_log(
+                chat_log=chat_log,
+                client=client,
+                message=message,
+                conversation_id=conversation_id,
+                agent_id=agent_id,
+                system_prompt=system_prompt,
+                model=model,
+            )
+            if full_response:
+                return full_response
+        except OpenClawApiError as err:
+            _LOGGER.warning(
+                "OpenClaw streaming failed, falling back to non-streaming response: %s",
+                err,
+            )
+
+        full_response = await self._get_response(
+            client=client,
+            message=message,
+            conversation_id=conversation_id,
+            agent_id=agent_id,
+            system_prompt=system_prompt,
+            model=model,
+        )
+        self._add_final_response_to_chat_log(chat_log, full_response)
+        return full_response
+
+    async def _async_stream_response_to_chat_log(
+        self,
+        chat_log: conversation.ChatLog,
+        client: OpenClawApiClient,
+        message: str,
+        conversation_id: str,
+        agent_id: str | None = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+    ) -> str:
+        """Stream OpenClaw deltas into the HA chat log."""
+        full_response_parts: list[str] = []
+        async for content in chat_log.async_add_delta_content_stream(
+            self._chat_log_agent_id,
+            self._async_openclaw_delta_stream(
+                client=client,
+                message=message,
+                conversation_id=conversation_id,
+                agent_id=agent_id,
+                system_prompt=system_prompt,
+                model=model,
+            ),
+        ):
+            if isinstance(content, conversation.AssistantContent) and content.content:
+                full_response_parts.append(content.content)
+        return "".join(full_response_parts)
+
+    async def _async_openclaw_delta_stream(
+        self,
+        client: OpenClawApiClient,
+        message: str,
+        conversation_id: str,
+        agent_id: str | None = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Map OpenClaw SSE chunks to the delta format expected by HA."""
+        yield {"role": "assistant"}
+
+        async for chunk in client.async_stream_message(
+            message=message,
+            session_id=conversation_id,
+            model=model,
+            system_prompt=system_prompt,
+            agent_id=agent_id,
+            extra_headers=_VOICE_REQUEST_HEADERS,
+        ):
+            if chunk:
+                yield {"content": chunk}
+
+    @property
+    def _chat_log_agent_id(self) -> str:
+        """Return the assistant identifier used for HA chat log messages."""
+        return self.entity_id or self.entry.entry_id
+
+    def _add_final_response_to_chat_log(
+        self,
+        chat_log: conversation.ChatLog,
+        full_response: str,
+    ) -> None:
+        """Append a non-streaming final assistant message to the chat log."""
+        chat_log.async_add_assistant_content_without_tools(
+            conversation.AssistantContent(
+                agent_id=self._chat_log_agent_id,
+                content=full_response or None,
+            )
+        )
 
     @staticmethod
     def _should_continue(response: str) -> bool:
@@ -312,8 +459,8 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
         text = response.strip()
 
         # Check if the response ends with a question mark
-        # (allow trailing punctuation like quotes, parens, or emoji)
-        if re.search(r"\?\s*[\"'""»)\]]*\s*$", text):
+        # (allow trailing punctuation like quotes or parens)
+        if re.search(r"\?\s*['\")\]]*\s*$", text):
             return True
 
         # Common follow-up patterns (EN + DE)
