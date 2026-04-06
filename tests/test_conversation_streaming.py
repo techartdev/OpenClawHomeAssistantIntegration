@@ -68,6 +68,7 @@ class FakeConversationResult:
 class FakeAssistantContent:
     agent_id: str
     content: str | None = None
+    thinking_content: str | None = None
 
 
 class FakeIntentResponse:
@@ -117,15 +118,19 @@ class FakeChatLog:
         stream,
     ):
         full_response = ""
+        full_thinking = ""
         async for delta in stream:
             self.deltas.append(delta)
             if content := delta.get("content"):
                 full_response += content
+            if thinking_content := delta.get("thinking_content"):
+                full_thinking += thinking_content
 
-        if full_response:
+        if full_response or full_thinking:
             assistant_content = FakeAssistantContent(
                 agent_id=agent_id,
                 content=full_response,
+                thinking_content=full_thinking,
             )
             self.added.append(assistant_content)
             yield assistant_content
@@ -151,22 +156,31 @@ class FakeClient:
         self,
         *,
         stream_chunks: list[str] | None = None,
+        stream_deltas: list[dict[str, str]] | None = None,
         response: dict[str, Any] | None = None,
         stream_error: Exception | None = None,
     ) -> None:
         self.stream_chunks = stream_chunks or []
+        self.stream_deltas = stream_deltas or [
+            {"content": chunk} for chunk in self.stream_chunks
+        ]
         self.response = response or {"text": ""}
         self.stream_error = stream_error
         self.stream_calls: list[dict[str, Any]] = []
         self.send_calls: list[dict[str, Any]] = []
 
-    async def async_stream_message(self, **kwargs: Any):
+    async def async_stream_message_deltas(self, **kwargs: Any):
         self.stream_calls.append(kwargs)
         if self.stream_error is not None:
             raise self.stream_error
 
-        for chunk in self.stream_chunks:
-            yield chunk
+        for delta in self.stream_deltas:
+            yield delta
+
+    async def async_stream_message(self, **kwargs: Any):
+        async for delta in self.async_stream_message_deltas(**kwargs):
+            if content := delta.get("content"):
+                yield content
 
     async def async_send_message(self, **kwargs: Any) -> dict[str, Any]:
         self.send_calls.append(kwargs)
@@ -397,6 +411,31 @@ def test_async_process_falls_back_when_stream_is_empty(conversation_module) -> N
     assert len(client.send_calls) == 1
     assert hass._last_chat_log is not None
     assert hass._last_chat_log.added[-1].content == "Fallback reply"
+
+
+def test_async_process_streams_thinking_content(conversation_module) -> None:
+    client = FakeClient(
+        stream_deltas=[
+            {"thinking_content": "Analyzing the request. "},
+            {"thinking_content": "Checking context. "},
+            {"content": "Final answer"},
+        ]
+    )
+    agent, hass, _ = _make_agent(conversation_module, client=client)
+
+    result = asyncio.run(agent.async_process(_make_user_input(text="Hello there")))
+
+    assert result.response.speech == "Final answer"
+    assert hass._last_chat_log is not None
+    assert hass._last_chat_log.deltas == [
+        {"role": "assistant"},
+        {"thinking_content": "Analyzing the request. "},
+        {"thinking_content": "Checking context. "},
+        {"content": "Final answer"},
+    ]
+    assert hass._last_chat_log.added[-1].thinking_content == (
+        "Analyzing the request. Checking context. "
+    )
 
 
 def test_agent_advertises_streaming_support(conversation_module) -> None:

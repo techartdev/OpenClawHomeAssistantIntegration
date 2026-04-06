@@ -412,7 +412,7 @@ class OpenClawConversationAgent(
         """Map OpenClaw SSE chunks to the delta format expected by HA."""
         yield {"role": "assistant"}
 
-        async for chunk in client.async_stream_message(
+        async for chunk in client.async_stream_message_deltas(
             message=message,
             session_id=conversation_id,
             model=model,
@@ -420,8 +420,15 @@ class OpenClawConversationAgent(
             agent_id=agent_id,
             extra_headers=_VOICE_REQUEST_HEADERS,
         ):
-            if chunk:
-                yield {"content": chunk}
+            delta: dict[str, Any] = {}
+
+            if thinking_content := chunk.get("thinking_content"):
+                delta["thinking_content"] = thinking_content
+            if content := chunk.get("content"):
+                delta["content"] = content
+
+            if delta:
+                yield delta
 
     @property
     def _chat_log_agent_id(self) -> str:

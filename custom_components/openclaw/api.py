@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, TypedDict
 
 import aiohttp
 
@@ -14,6 +14,7 @@ from .const import (
     API_MODELS,
     API_TOOLS_INVOKE,
 )
+from .helpers import extract_text_recursive
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,6 +35,13 @@ class OpenClawConnectionError(OpenClawApiError):
 
 class OpenClawAuthError(OpenClawApiError):
     """Authentication with OpenClaw gateway failed."""
+
+
+class OpenClawStreamDelta(TypedDict, total=False):
+    """Structured delta emitted by the OpenClaw streaming API."""
+
+    content: str
+    thinking_content: str
 
 
 class OpenClawApiClient:
@@ -273,7 +281,7 @@ class OpenClawApiClient:
     ) -> AsyncIterator[str]:
         """Send a chat message and stream the response via SSE.
 
-        Yields delta content strings as they arrive from the gateway.
+        Yields only assistant text deltas for backwards compatibility.
 
         Args:
             message: The user message text.
@@ -285,6 +293,27 @@ class OpenClawApiClient:
         Yields:
             Content delta strings from the streaming response.
         """
+        async for delta in self.async_stream_message_deltas(
+            message=message,
+            session_id=session_id,
+            model=model,
+            system_prompt=system_prompt,
+            agent_id=agent_id,
+            extra_headers=extra_headers,
+        ):
+            if content := delta.get("content"):
+                yield content
+
+    async def async_stream_message_deltas(
+        self,
+        message: str,
+        session_id: str | None = None,
+        model: str | None = None,
+        system_prompt: str | None = None,
+        agent_id: str | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> AsyncIterator[OpenClawStreamDelta]:
+        """Send a chat message and stream structured deltas via SSE."""
         messages: list[dict[str, str]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -334,12 +363,8 @@ class OpenClawApiClient:
 
                     try:
                         chunk = json.loads(data_str)
-                        choices = chunk.get("choices", [])
-                        if choices:
-                            delta = choices[0].get("delta", {})
-                            content = delta.get("content")
-                            if content:
-                                yield content
+                        if delta := self._extract_stream_delta(chunk):
+                            yield delta
                     except json.JSONDecodeError:
                         _LOGGER.debug("Skipping non-JSON SSE line: %s", data_str[:100])
 
@@ -347,6 +372,42 @@ class OpenClawApiClient:
             raise OpenClawConnectionError(
                 f"Cannot connect to OpenClaw gateway: {err}"
             ) from err
+
+    @staticmethod
+    def _extract_stream_delta(chunk: dict[str, Any]) -> OpenClawStreamDelta | None:
+        """Extract assistant text and reasoning deltas from a stream chunk."""
+        choices = chunk.get("choices", [])
+        if not choices:
+            return None
+
+        delta = choices[0].get("delta", {})
+        if not isinstance(delta, dict):
+            return None
+
+        stream_delta: OpenClawStreamDelta = {}
+
+        if content := delta.get("content"):
+            stream_delta["content"] = content
+
+        if thinking_content := OpenClawApiClient._extract_thinking_content(delta):
+            stream_delta["thinking_content"] = thinking_content
+
+        return stream_delta or None
+
+    @staticmethod
+    def _extract_thinking_content(delta: dict[str, Any]) -> str | None:
+        """Extract reasoning text from provider-specific delta shapes."""
+        for key in (
+            "thinking_content",
+            "reasoning_content",
+            "thinking",
+            "reasoning",
+        ):
+            extracted = extract_text_recursive(delta.get(key))
+            if extracted:
+                return extracted
+
+        return None
 
     async def async_check_connection(self) -> bool:
         """Check if the gateway is reachable, API is enabled, and auth works.
