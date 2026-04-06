@@ -93,15 +93,16 @@ class OpenClawConversationAgent(
         entry_data = self.hass.data.get(DOMAIN, {}).get(self.entry.entry_id)
         if entry_data is not None:
             entry_data["conversation_entity_id"] = self.entity_id
+            entry_data["legacy_conversation_agent_id"] = self.entry.entry_id
 
     async def async_will_remove_from_hass(self) -> None:
         """Remove the cached entity id when the agent unloads."""
         entry_data = self.hass.data.get(DOMAIN, {}).get(self.entry.entry_id)
-        if (
-            entry_data is not None
-            and entry_data.get("conversation_entity_id") == self.entity_id
-        ):
-            entry_data.pop("conversation_entity_id", None)
+        if entry_data is not None:
+            if entry_data.get("conversation_entity_id") == self.entity_id:
+                entry_data.pop("conversation_entity_id", None)
+            if entry_data.get("legacy_conversation_agent_id") == self.entry.entry_id:
+                entry_data.pop("legacy_conversation_agent_id", None)
         await super().async_will_remove_from_hass()
 
     @property

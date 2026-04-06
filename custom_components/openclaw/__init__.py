@@ -841,6 +841,11 @@ def _async_register_websocket_api(hass: HomeAssistant) -> None:
                 "conversation_entity_id": entry_data.get("conversation_entity_id")
                 if entry_data
                 else None,
+                "legacy_conversation_agent_id": entry_data.get(
+                    "legacy_conversation_agent_id"
+                )
+                if entry_data
+                else None,
             },
         )
 

@@ -424,11 +424,19 @@ def test_entity_agent_skips_legacy_agent_registration(conversation_module) -> No
         hass.data[conversation_module.DOMAIN][agent.entry.entry_id]["conversation_entity_id"]
         == "conversation.openclaw"
     )
+    assert (
+        hass.data[conversation_module.DOMAIN][agent.entry.entry_id]["legacy_conversation_agent_id"]
+        == "entry-1"
+    )
     asyncio.run(agent.async_will_remove_from_hass())
 
     assert calls == []
     assert (
         "conversation_entity_id"
+        not in hass.data[conversation_module.DOMAIN][agent.entry.entry_id]
+    )
+    assert (
+        "legacy_conversation_agent_id"
         not in hass.data[conversation_module.DOMAIN][agent.entry.entry_id]
     )
 

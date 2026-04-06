@@ -82,6 +82,7 @@ class OpenClawChatCard extends HTMLElement {
     this._preferredAssistPipelineId = null;
     this._assistTextStreamingAvailable = false;
     this._openclawConversationEntityId = null;
+    this._openclawLegacyConversationAgentId = null;
     this._assistTtsEngines = [];
     this._lastHaTtsAttempt = null;
     this._voiceBackendBlocked = false;
@@ -440,6 +441,11 @@ class OpenClawChatCard extends HTMLElement {
         result.conversation_entity_id.trim().length > 0
           ? result.conversation_entity_id.trim()
           : null;
+      this._openclawLegacyConversationAgentId =
+        typeof result?.legacy_conversation_agent_id === "string" &&
+        result.legacy_conversation_agent_id.trim().length > 0
+          ? result.legacy_conversation_agent_id.trim()
+          : null;
 
       if (includePipeline) {
         try {
@@ -456,9 +462,13 @@ class OpenClawChatCard extends HTMLElement {
         const pipelines = Array.isArray(pipelineResult?.pipelines)
           ? pipelineResult.pipelines
           : [];
-        const openClawPipeline = this._openclawConversationEntityId
-          ? pipelines.find(
-              (pipeline) => pipeline?.conversation_engine === this._openclawConversationEntityId
+        const openClawConversationEngines = [
+          this._openclawConversationEntityId,
+          this._openclawLegacyConversationAgentId,
+        ].filter((value) => typeof value === "string" && value.length > 0);
+        const openClawPipeline = openClawConversationEngines.length
+          ? pipelines.find((pipeline) =>
+              openClawConversationEngines.includes(pipeline?.conversation_engine)
             ) || null
           : null;
         const preferredPipeline =
@@ -468,7 +478,7 @@ class OpenClawChatCard extends HTMLElement {
         this._preferredAssistPipelineId = preferredPipeline?.id || null;
         this._assistTextStreamingAvailable =
           !!openClawPipeline &&
-          preferredPipeline?.conversation_engine === this._openclawConversationEntityId;
+          openClawConversationEngines.includes(preferredPipeline?.conversation_engine);
         const discoveredTtsEngines = pipelines
           .map((pipeline) => pipeline?.tts_engine)
           .filter((engine) => typeof engine === "string" && engine.trim().length > 0)
@@ -685,6 +695,10 @@ class OpenClawChatCard extends HTMLElement {
 
   async _sendMessage(text, source = null) {
     if (!text || !text.trim() || !this._hass) return;
+
+    if (!this._preferredAssistPipelineId) {
+      await this._loadIntegrationSettings(true);
+    }
 
     const message = text.trim();
     this._addMessage("user", message);
