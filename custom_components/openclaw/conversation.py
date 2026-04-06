@@ -87,6 +87,23 @@ class OpenClawConversationAgent(
         self._attr_unique_id = entry.entry_id
         self._attr_name = entry.title or "OpenClaw"
 
+    async def async_added_to_hass(self) -> None:
+        """Expose the entity id for frontend pipeline selection."""
+        await super().async_added_to_hass()
+        entry_data = self.hass.data.get(DOMAIN, {}).get(self.entry.entry_id)
+        if entry_data is not None:
+            entry_data["conversation_entity_id"] = self.entity_id
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Remove the cached entity id when the agent unloads."""
+        entry_data = self.hass.data.get(DOMAIN, {}).get(self.entry.entry_id)
+        if (
+            entry_data is not None
+            and entry_data.get("conversation_entity_id") == self.entity_id
+        ):
+            entry_data.pop("conversation_entity_id", None)
+        await super().async_will_remove_from_hass()
+
     @property
     def attribution(self) -> dict[str, str]:
         """Return attribution info."""

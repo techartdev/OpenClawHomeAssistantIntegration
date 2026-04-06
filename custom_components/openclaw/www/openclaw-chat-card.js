@@ -9,11 +9,12 @@
  * - Voice input (WebSpeech / MediaRecorder)
  * - Voice mode toggle (continuous conversation)
  *
- * Communication: uses HA WebSocket API → openclaw.send_message service
- * + subscribes to openclaw_message_received events.
+ * Communication: prefers Assist pipeline text streaming when an OpenClaw
+ * conversation pipeline is available, and falls back to the legacy
+ * openclaw.send_message service plus openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.13";
+const CARD_VERSION = "0.3.14";
 
 // Max time (ms) to show the thinking indicator before falling back to an error (default; overridable via card config `thinking_timeout` in seconds)
 const THINKING_TIMEOUT_MS = 120_000;
@@ -78,6 +79,9 @@ class OpenClawChatCard extends HTMLElement {
     this._voiceProviderIntegration = "browser";
     this._preferredAssistSttEngine = null;
     this._preferredAssistTtsEngine = null;
+    this._preferredAssistPipelineId = null;
+    this._assistTextStreamingAvailable = false;
+    this._openclawConversationEntityId = null;
     this._assistTtsEngines = [];
     this._lastHaTtsAttempt = null;
     this._voiceBackendBlocked = false;
@@ -93,6 +97,7 @@ class OpenClawChatCard extends HTMLElement {
     this._assistInputSampleRate = 16000;
     this._assistAutoStopTimer = null;
     this._lastAssistantEventSignature = null;
+    this._pipelineRunUnsubscribe = null;
     this._autoScrollPinned = true;
     this._lastHassRenderSignature = null;
     this._integrationThinkingTimeout = null;
@@ -223,6 +228,10 @@ class OpenClawChatCard extends HTMLElement {
     if (this._voiceRetryTimer) {
       clearTimeout(this._voiceRetryTimer);
       this._voiceRetryTimer = null;
+    }
+    if (this._pipelineRunUnsubscribe) {
+      this._pipelineRunUnsubscribe();
+      this._pipelineRunUnsubscribe = null;
     }
   }
 
@@ -426,6 +435,11 @@ class OpenClawChatCard extends HTMLElement {
         typeof result?.thinking_timeout === "number" && result.thinking_timeout >= 10
           ? result.thinking_timeout * 1000
           : null;
+      this._openclawConversationEntityId =
+        typeof result?.conversation_entity_id === "string" &&
+        result.conversation_entity_id.trim().length > 0
+          ? result.conversation_entity_id.trim()
+          : null;
 
       if (includePipeline) {
         try {
@@ -442,13 +456,24 @@ class OpenClawChatCard extends HTMLElement {
         const pipelines = Array.isArray(pipelineResult?.pipelines)
           ? pipelineResult.pipelines
           : [];
+        const openClawPipeline = this._openclawConversationEntityId
+          ? pipelines.find(
+              (pipeline) => pipeline?.conversation_engine === this._openclawConversationEntityId
+            ) || null
+          : null;
+        const preferredPipeline =
+          openClawPipeline ||
+          pipelines.find((pipeline) => pipeline?.id === preferredPipelineId) ||
+          pipelines[0];
+        this._preferredAssistPipelineId = preferredPipeline?.id || null;
+        this._assistTextStreamingAvailable =
+          !!openClawPipeline &&
+          preferredPipeline?.conversation_engine === this._openclawConversationEntityId;
         const discoveredTtsEngines = pipelines
           .map((pipeline) => pipeline?.tts_engine)
           .filter((engine) => typeof engine === "string" && engine.trim().length > 0)
           .map((engine) => engine.trim());
         this._assistTtsEngines = [...new Set(discoveredTtsEngines)];
-        const preferredPipeline =
-          pipelines.find((pipeline) => pipeline?.id === preferredPipelineId) || pipelines[0];
         this._preferredAssistSttEngine = preferredPipeline?.stt_engine || null;
         this._preferredAssistTtsEngine = preferredPipeline?.tts_engine || this._assistTtsEngines[0] || null;
 
@@ -516,10 +541,150 @@ class OpenClawChatCard extends HTMLElement {
     this._persistMessages();
   }
 
+  _canUseAssistPipelineTextStreaming() {
+    return !!(
+      this._hass?.connection?.subscribeMessage &&
+      this._preferredAssistPipelineId &&
+      this._assistTextStreamingAvailable
+    );
+  }
+
+  _extractAssistPipelineSpeech(eventData) {
+    const plainSpeech = eventData?.intent_output?.response?.speech?.plain?.speech;
+    if (typeof plainSpeech === "string" && plainSpeech.length) {
+      return plainSpeech;
+    }
+
+    const simpleSpeech = eventData?.intent_output?.speech?.plain?.speech;
+    if (typeof simpleSpeech === "string" && simpleSpeech.length) {
+      return simpleSpeech;
+    }
+
+    return null;
+  }
+
+  async _sendMessageViaLegacyService(message, source = null) {
+    await this._subscribeToEvents();
+
+    await this._hass.callService("openclaw", "send_message", {
+      message: message,
+      source: source || undefined,
+      session_id: this._config.session_id || undefined,
+    });
+
+    setTimeout(() => {
+      this._syncHistoryFromBackend(1);
+    }, 1200);
+  }
+
+  async _sendMessageViaAssistPipeline(message, assistantMessage) {
+    const command = {
+      type: "assist_pipeline/run",
+      start_stage: "intent",
+      end_stage: "intent",
+      input: { text: message },
+      conversation_id: this._getSessionId(),
+      pipeline: this._preferredAssistPipelineId,
+    };
+
+    return new Promise(async (resolve, reject) => {
+      let settled = false;
+      let sawDeltaContent = false;
+      let unsubscribe = null;
+
+      const redraw = () => {
+        this._persistMessages();
+        this._render();
+        this._scrollToBottom();
+      };
+
+      const finish = (err = null) => {
+        if (settled) return;
+        settled = true;
+        if (unsubscribe) {
+          unsubscribe();
+          if (this._pipelineRunUnsubscribe === unsubscribe) {
+            this._pipelineRunUnsubscribe = null;
+          }
+          unsubscribe = null;
+        }
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve();
+      };
+
+      try {
+        unsubscribe = await this._hass.connection.subscribeMessage((messageEvent) => {
+          const event = messageEvent?.event && typeof messageEvent.event === "object"
+            ? messageEvent.event
+            : messageEvent;
+          const eventType = event?.type;
+          const eventData = event?.data || {};
+
+          if (!eventType || eventType === "result") {
+            return;
+          }
+
+          if (eventType === "intent-progress") {
+            const delta = eventData?.chat_log_delta;
+            if (!delta || typeof delta.content !== "string" || !delta.content.length) {
+              return;
+            }
+
+            assistantMessage.role = "assistant";
+            assistantMessage.content = `${assistantMessage._thinking ? "" : assistantMessage.content || ""}${delta.content}`;
+            assistantMessage._thinking = false;
+            sawDeltaContent = true;
+            redraw();
+            return;
+          }
+
+          if (eventType === "intent-end") {
+            const finalSpeech = this._extractAssistPipelineSpeech(eventData);
+            if (typeof finalSpeech === "string" && finalSpeech.length && !sawDeltaContent) {
+              assistantMessage.role = "assistant";
+              assistantMessage.content = finalSpeech;
+              assistantMessage._thinking = false;
+              redraw();
+            }
+            return;
+          }
+
+          if (eventType === "error") {
+            finish(new Error(eventData?.message || "Assist pipeline failed"));
+            return;
+          }
+
+          if (eventType === "run-end") {
+            if (assistantMessage._thinking && !assistantMessage.content) {
+              const finalSpeech = this._extractAssistPipelineSpeech(eventData);
+              if (typeof finalSpeech === "string" && finalSpeech.length) {
+                assistantMessage.role = "assistant";
+                assistantMessage.content = finalSpeech;
+                assistantMessage._thinking = false;
+                redraw();
+              }
+            }
+
+            if (assistantMessage._thinking && !assistantMessage.content) {
+              finish(new Error("No response received from Assist pipeline"));
+              return;
+            }
+
+            finish();
+          }
+        }, command);
+        this._pipelineRunUnsubscribe = unsubscribe;
+      } catch (err) {
+        finish(err);
+      }
+    });
+  }
+
   async _sendMessage(text, source = null) {
     if (!text || !text.trim() || !this._hass) return;
-
-    await this._subscribeToEvents();
 
     const message = text.trim();
     this._addMessage("user", message);
@@ -527,45 +692,61 @@ class OpenClawChatCard extends HTMLElement {
     // Add thinking indicator with timeout safeguard
     this._isProcessing = true;
     this._pendingResponses += 1;
-    this._messages.push({
+    const assistantMessage = {
       role: "assistant",
       content: "",
       _thinking: true,
       timestamp: new Date().toISOString(),
-    });
+    };
+    this._messages.push(assistantMessage);
     this._startThinkingTimer();
 
     this._render();
     this._scrollToBottom();
 
-    try {
-      await this._hass.callService("openclaw", "send_message", {
-        message: message,
-        source: source || undefined,
-        session_id: this._config.session_id || undefined,
-      });
+    const useAssistPipeline = this._canUseAssistPipelineTextStreaming();
 
-      setTimeout(() => {
-        this._syncHistoryFromBackend(1);
-      }, 1200);
+    try {
+      if (useAssistPipeline) {
+        await this._sendMessageViaAssistPipeline(message, assistantMessage);
+        if (this._pendingResponses > 0) {
+          this._pendingResponses -= 1;
+        }
+        this._isProcessing = this._pendingResponses > 0;
+        if (!this._isProcessing) {
+          this._clearThinkingTimer();
+        }
+        this._persistMessages();
+        this._render();
+        this._scrollToBottom();
+
+        if (this._isVoiceMode && assistantMessage.content) {
+          this._speak(assistantMessage.content);
+        }
+      } else {
+        await this._sendMessageViaLegacyService(message, source);
+      }
     } catch (err) {
-      console.error("OpenClaw: Failed to send message:", err);
-      // Replace thinking with error
-      let thinkingIdx = -1;
-      for (let idx = this._messages.length - 1; idx >= 0; idx -= 1) {
-        if (this._messages[idx]?._thinking) {
-          thinkingIdx = idx;
-          break;
+      if (useAssistPipeline) {
+        console.warn(
+          "OpenClaw: Assist pipeline text streaming failed, falling back to legacy send_message:",
+          err
+        );
+        try {
+          await this._sendMessageViaLegacyService(message, source);
+          return;
+        } catch (fallbackErr) {
+          err = fallbackErr;
         }
       }
-      if (thinkingIdx >= 0) {
-        this._messages[thinkingIdx] = {
-          role: "assistant",
-          content: `Error: ${err.message || "Failed to send message"}`,
-          timestamp: new Date().toISOString(),
-          _error: true,
-        };
-      }
+
+      console.error("OpenClaw: Failed to send message:", err);
+      // Replace thinking with error
+      assistantMessage.role = "assistant";
+      assistantMessage.content = `Error: ${err.message || "Failed to send message"}`;
+      assistantMessage.timestamp = new Date().toISOString();
+      assistantMessage._thinking = false;
+      assistantMessage._error = true;
       if (this._pendingResponses > 0) {
         this._pendingResponses -= 1;
       }

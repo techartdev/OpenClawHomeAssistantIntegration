@@ -838,6 +838,9 @@ def _async_register_websocket_api(hass: HomeAssistant) -> None:
                     DEFAULT_THINKING_TIMEOUT,
                 ),
                 "language": hass.config.language,
+                "conversation_entity_id": entry_data.get("conversation_entity_id")
+                if entry_data
+                else None,
             },
         )
 

@@ -407,7 +407,7 @@ def test_agent_advertises_streaming_support(conversation_module) -> None:
 
 
 def test_entity_agent_skips_legacy_agent_registration(conversation_module) -> None:
-    agent, _, _ = _make_agent(conversation_module, client=FakeClient())
+    agent, hass, _ = _make_agent(conversation_module, client=FakeClient())
     calls: list[str] = []
 
     def _set_agent(*args: Any, **kwargs: Any) -> None:
@@ -420,9 +420,17 @@ def test_entity_agent_skips_legacy_agent_registration(conversation_module) -> No
     conversation_module.conversation.async_unset_agent = _unset_agent
 
     asyncio.run(agent.async_added_to_hass())
+    assert (
+        hass.data[conversation_module.DOMAIN][agent.entry.entry_id]["conversation_entity_id"]
+        == "conversation.openclaw"
+    )
     asyncio.run(agent.async_will_remove_from_hass())
 
     assert calls == []
+    assert (
+        "conversation_entity_id"
+        not in hass.data[conversation_module.DOMAIN][agent.entry.entry_id]
+    )
 
 
 def test_conversation_id_resolution_keeps_agent_namespace(conversation_module) -> None:
