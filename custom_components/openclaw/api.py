@@ -364,6 +364,12 @@ class OpenClawApiClient:
                     try:
                         chunk = json.loads(data_str)
                         if delta := self._extract_stream_delta(chunk):
+                            _LOGGER.debug(
+                                "OpenClaw streaming delta received "
+                                "(content_len=%s, thinking_len=%s)",
+                                len(delta.get("content", "")),
+                                len(delta.get("thinking_content", "")),
+                            )
                             yield delta
                     except json.JSONDecodeError:
                         _LOGGER.debug("Skipping non-JSON SSE line: %s", data_str[:100])

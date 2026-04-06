@@ -385,6 +385,8 @@ class OpenClawConversationAgent(
     ) -> str:
         """Stream OpenClaw deltas into the HA chat log."""
         full_response_parts: list[str] = []
+        content_chunk_count = 0
+        thinking_chunk_count = 0
         async for content in chat_log.async_add_delta_content_stream(
             self._chat_log_agent_id,
             self._async_openclaw_delta_stream(
@@ -396,8 +398,19 @@ class OpenClawConversationAgent(
                 model=model,
             ),
         ):
-            if isinstance(content, conversation.AssistantContent) and content.content:
-                full_response_parts.append(content.content)
+            if isinstance(content, conversation.AssistantContent):
+                if content.content:
+                    full_response_parts.append(content.content)
+                    content_chunk_count += 1
+                if content.thinking_content:
+                    thinking_chunk_count += 1
+
+        _LOGGER.debug(
+            "OpenClaw chat log stream completed "
+            "(assistant_messages=%s, thinking_messages=%s)",
+            content_chunk_count,
+            thinking_chunk_count,
+        )
         return "".join(full_response_parts)
 
     async def _async_openclaw_delta_stream(
@@ -428,6 +441,12 @@ class OpenClawConversationAgent(
                 delta["content"] = content
 
             if delta:
+                _LOGGER.debug(
+                    "Forwarding OpenClaw delta to HA chat log "
+                    "(content_len=%s, thinking_len=%s)",
+                    len(delta.get("content", "")),
+                    len(delta.get("thinking_content", "")),
+                )
                 yield delta
 
     @property
