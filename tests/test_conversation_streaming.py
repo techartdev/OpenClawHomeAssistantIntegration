@@ -406,6 +406,25 @@ def test_agent_advertises_streaming_support(conversation_module) -> None:
     assert agent._attr_supports_streaming is True
 
 
+def test_entity_agent_skips_legacy_agent_registration(conversation_module) -> None:
+    agent, _, _ = _make_agent(conversation_module, client=FakeClient())
+    calls: list[str] = []
+
+    def _set_agent(*args: Any, **kwargs: Any) -> None:
+        calls.append("set")
+
+    def _unset_agent(*args: Any, **kwargs: Any) -> None:
+        calls.append("unset")
+
+    conversation_module.conversation.async_set_agent = _set_agent
+    conversation_module.conversation.async_unset_agent = _unset_agent
+
+    asyncio.run(agent.async_added_to_hass())
+    asyncio.run(agent.async_will_remove_from_hass())
+
+    assert calls == []
+
+
 def test_conversation_id_resolution_keeps_agent_namespace(conversation_module) -> None:
     agent, _, _ = _make_agent(conversation_module, client=FakeClient())
     user_input = _make_user_input(text="Hello there", conversation_id="session-42")

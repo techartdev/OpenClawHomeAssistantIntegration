@@ -87,16 +87,6 @@ class OpenClawConversationAgent(
         self._attr_unique_id = entry.entry_id
         self._attr_name = entry.title or "OpenClaw"
 
-    async def async_added_to_hass(self) -> None:
-        """Register the entity-backed agent when added to Home Assistant."""
-        await super().async_added_to_hass()
-        conversation.async_set_agent(self.hass, self.entry, self)
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Unregister the entity-backed agent when removed from Home Assistant."""
-        conversation.async_unset_agent(self.hass, self.entry)
-        await super().async_will_remove_from_hass()
-
     @property
     def attribution(self) -> dict[str, str]:
         """Return attribution info."""
