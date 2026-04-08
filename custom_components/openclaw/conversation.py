@@ -27,12 +27,14 @@ from .const import (
     CONF_AGENT_ID,
     CONF_CONTEXT_MAX_CHARS,
     CONF_CONTEXT_STRATEGY,
+    CONF_DEBUG_LOGGING,
     CONF_INCLUDE_EXPOSED_CONTEXT,
     CONF_VOICE_AGENT_ID,
     DEFAULT_ASSIST_SESSION_ID,
     DEFAULT_AGENT_ID,
     DEFAULT_CONTEXT_MAX_CHARS,
     DEFAULT_CONTEXT_STRATEGY,
+    DEFAULT_DEBUG_LOGGING,
     DEFAULT_INCLUDE_EXPOSED_CONTEXT,
     DATA_MODEL,
     DOMAIN,
@@ -154,6 +156,13 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
         system_prompt = "\n\n".join(
             part for part in (exposed_context, extra_system_prompt) if part
         ) or None
+
+        if options.get(CONF_DEBUG_LOGGING, DEFAULT_DEBUG_LOGGING):
+            _LOGGER.info(
+                "OpenClaw Assist routing: agent=%s session=%s",
+                voice_agent_id or "main",
+                conversation_id,
+            )
 
         try:
             full_response = await self._get_response(

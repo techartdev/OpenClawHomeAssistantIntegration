@@ -54,6 +54,7 @@ from .const import (
     CONF_BROWSER_VOICE_LANGUAGE,
     CONF_VOICE_PROVIDER,
     CONF_THINKING_TIMEOUT,
+    CONF_DEBUG_LOGGING,
     BROWSER_VOICE_LANGUAGES,
     CONTEXT_STRATEGY_CLEAR,
     CONTEXT_STRATEGY_TRUNCATE,
@@ -71,6 +72,7 @@ from .const import (
     DEFAULT_BROWSER_VOICE_LANGUAGE,
     DEFAULT_VOICE_PROVIDER,
     DEFAULT_THINKING_TIMEOUT,
+    DEFAULT_DEBUG_LOGGING,
     DEFAULT_VOICE_AGENT_ID,
     DOMAIN,
     OPENCLAW_CONFIG_REL_PATH,
@@ -537,6 +539,13 @@ class OpenClawOptionsFlow(OptionsFlowWithReload):
                 CONF_VOICE_PROVIDER,
                 default=selected_provider,
             ): vol.In(["browser", "assist_stt"]),
+            vol.Optional(
+                CONF_DEBUG_LOGGING,
+                default=options.get(
+                    CONF_DEBUG_LOGGING,
+                    DEFAULT_DEBUG_LOGGING,
+                ),
+            ): bool,
             vol.Optional(
                 CONF_THINKING_TIMEOUT,
                 default=options.get(

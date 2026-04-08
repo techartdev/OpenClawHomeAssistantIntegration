@@ -65,6 +65,7 @@ from .const import (
     CONF_BROWSER_VOICE_LANGUAGE,
     CONF_VOICE_PROVIDER,
     CONF_THINKING_TIMEOUT,
+    CONF_DEBUG_LOGGING,
     CONTEXT_STRATEGY_TRUNCATE,
     DEFAULT_AGENT_ID,
     DEFAULT_VOICE_AGENT_ID,
@@ -78,6 +79,7 @@ from .const import (
     DEFAULT_BROWSER_VOICE_LANGUAGE,
     DEFAULT_VOICE_PROVIDER,
     DEFAULT_THINKING_TIMEOUT,
+    DEFAULT_DEBUG_LOGGING,
     DOMAIN,
     EVENT_MESSAGE_RECEIVED,
     EVENT_TOOL_INVOKED,
@@ -162,6 +164,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenClawConfigEntry) -> 
         verify_ssl=verify_ssl,
         session=session,
         agent_id=agent_id,
+        debug_logging=entry.options.get(CONF_DEBUG_LOGGING, DEFAULT_DEBUG_LOGGING),
     )
 
     coordinator = OpenClawCoordinator(hass, client)
@@ -836,6 +839,10 @@ def _async_register_websocket_api(hass: HomeAssistant) -> None:
                 CONF_THINKING_TIMEOUT: options.get(
                     CONF_THINKING_TIMEOUT,
                     DEFAULT_THINKING_TIMEOUT,
+                ),
+                CONF_DEBUG_LOGGING: options.get(
+                    CONF_DEBUG_LOGGING,
+                    DEFAULT_DEBUG_LOGGING,
                 ),
                 "language": hass.config.language,
             },

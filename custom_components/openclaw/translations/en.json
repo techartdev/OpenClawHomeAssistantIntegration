@@ -52,7 +52,8 @@
           "allow_brave_webspeech": "Allow Web Speech in Brave (experimental)",
           "voice_provider": "Voice input provider (browser or HA STT)",
           "browser_voice_language": "Browser voice language",
-          "thinking_timeout": "Response timeout (seconds)"
+          "thinking_timeout": "Response timeout (seconds)",
+          "debug_logging": "Enable debug logging"
         }
       }
     }
