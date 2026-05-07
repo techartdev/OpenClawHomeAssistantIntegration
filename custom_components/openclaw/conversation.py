@@ -313,7 +313,7 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
 
         # Check if the response ends with a question mark
         # (allow trailing punctuation like quotes, parens, or emoji)
-        if re.search(r"\?\s*[\"'""»)\]]*\s*$", text):
+        if re.search(r"\?\s*[\"'»)\]]*\s*$", text):
             return True
 
         # Common follow-up patterns (EN + DE)
