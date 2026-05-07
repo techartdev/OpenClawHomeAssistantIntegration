@@ -44,6 +44,23 @@ from .helpers import extract_text_recursive
 
 _LOGGER = logging.getLogger(__name__)
 
+# Strip OpenClaw ```tool_code``` markdown fences from the response text before
+# it reaches the Assist pipeline / TTS. The OpenClaw family-memory plugin
+# bridge rewrites these fences in the persisted transcript and fires the DB
+# write, but the response payload from /v1/chat/completions bypasses all
+# plugin hooks (before_message_write fires on persistence only). Without this
+# scrubber Voice PE TTS would speak the raw call literally.
+_TOOL_CODE_FENCE_RE = re.compile(r"```tool_code\s*\n.*?\n?```", re.DOTALL)
+
+
+def _scrub_tool_code_fences(text: str) -> str:
+    """Replace ```tool_code``` fences with a short confirmation for TTS."""
+    if not text:
+        return text
+    scrubbed = _TOOL_CODE_FENCE_RE.sub("", text).strip()
+    return scrubbed if scrubbed else "OK."
+
+
 _VOICE_REQUEST_HEADERS = {
     "x-openclaw-source": "voice",
     "x-ha-voice": "true",
@@ -282,7 +299,7 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
             full_response += chunk
 
         if full_response:
-            return full_response
+            return _scrub_tool_code_fences(full_response)
 
         response = await client.async_send_message(
             message=message,
@@ -292,7 +309,7 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
             agent_id=agent_id,
             extra_headers=_VOICE_REQUEST_HEADERS,
         )
-        return extract_text_recursive(response) or ""
+        return _scrub_tool_code_fences(extract_text_recursive(response) or "")
 
     @staticmethod
     def _should_continue(response: str) -> bool:
