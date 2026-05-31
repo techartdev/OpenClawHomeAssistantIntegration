@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.63] - 2026-05-31
+
+### Fixed
+- Fixed Assist/TTS reading raw ```tool_code``` fences aloud by scrubbing those fenced tool-call payloads from conversation responses before they reach Home Assistant speech output. (Based on PR #26 by @tundakk)
+- Fixed a Python regex literal in the Assist follow-up heuristic that raises `SyntaxWarning` on Python 3.12+ and becomes a `SyntaxError` on Python 3.14. (Based on PR #27 by @tundakk)
+- Fixed agent routing fallback for chat-completions requests by sending `model: openclaw:<agent_id>` whenever an agent is selected and no explicit model override is set. (Based on PR #10 by @dalehamel)
+
 ## [0.1.62] - 2026-04-04
 
 ### Added

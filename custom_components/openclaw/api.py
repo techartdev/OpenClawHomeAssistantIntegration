@@ -232,6 +232,8 @@ class OpenClawApiClient:
             payload["user"] = session_id
         if model:
             payload["model"] = model
+        elif agent_id:
+            payload["model"] = f"openclaw:{agent_id}"
 
         # Pass session_id as a custom header or param if supported by gateway
         headers = self._headers(agent_id=agent_id, extra_headers=extra_headers)
@@ -299,6 +301,8 @@ class OpenClawApiClient:
             payload["user"] = session_id
         if model:
             payload["model"] = model
+        elif agent_id:
+            payload["model"] = f"openclaw:{agent_id}"
 
         headers = self._headers(agent_id=agent_id, extra_headers=extra_headers)
         if session_id:
