@@ -248,23 +248,30 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
 
         agent_suffix = self._normalize_optional_text(agent_id)
 
+        # The gateway resolves the agent from the session key when one is sent
+        # (x-openclaw-session-key wins over x-openclaw-agent-id), and a key
+        # without an "agent:<id>:" prefix lands on the default agent. Scope the
+        # key to the agent so voice_agent_id/agent_id are actually honoured.
+        def _scoped(base_id: str) -> str:
+            if not agent_suffix or base_id.startswith(f"agent:{agent_suffix}:"):
+                return base_id  # follow-up turns hand back an already-scoped id
+            return f"agent:{agent_suffix}:{base_id}"
+
         if user_input.conversation_id:
-            if agent_suffix:
-                return f"{user_input.conversation_id}:{agent_suffix}"
-            return user_input.conversation_id
+            return _scoped(user_input.conversation_id)
 
         context = getattr(user_input, "context", None)
         user_id = getattr(context, "user_id", None)
         if user_id:
             base_id = f"assist_user_{user_id}"
-            return f"{base_id}:{agent_suffix}" if agent_suffix else base_id
+            return _scoped(base_id)
 
         device_id = getattr(user_input, "device_id", None)
         if device_id:
             base_id = f"assist_device_{device_id}"
-            return f"{base_id}:{agent_suffix}" if agent_suffix else base_id
+            return _scoped(base_id)
 
-        return f"assist_default:{agent_suffix}" if agent_suffix else "assist_default"
+        return _scoped("assist_default")
 
     def _normalize_optional_text(self, value: Any) -> str | None:
         """Return a stripped string or None for blank values."""
