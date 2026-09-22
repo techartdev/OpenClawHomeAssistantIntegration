@@ -248,13 +248,9 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
 
         agent_suffix = self._normalize_optional_text(agent_id)
 
-        # The gateway resolves the agent from the session key when one is sent
-        # (x-openclaw-session-key wins over x-openclaw-agent-id), and a key
-        # without an "agent:<id>:" prefix lands on the default agent. Scope the
-        # key to the agent so voice_agent_id/agent_id are actually honoured.
         def _scoped(base_id: str) -> str:
             if not agent_suffix or base_id.startswith(f"agent:{agent_suffix}:"):
-                return base_id  # follow-up turns hand back an already-scoped id
+                return base_id
             return f"agent:{agent_suffix}:{base_id}"
 
         if user_input.conversation_id:
