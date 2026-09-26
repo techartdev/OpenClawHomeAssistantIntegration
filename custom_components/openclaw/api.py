@@ -14,6 +14,7 @@ from .const import (
     API_MODELS,
     API_TOOLS_INVOKE,
 )
+from .helpers import ssl_request_parameter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class OpenClawApiClient:
         self._base_url = f"{'https' if use_ssl else 'http'}://{host}:{port}"
         # ssl=False disables cert verification for self-signed certs;
         # ssl=None uses default verification.
-        self._ssl_param: bool | None = False if (use_ssl and not verify_ssl) else None
+        self._ssl_param = ssl_request_parameter(use_ssl, verify_ssl)
 
     @property
     def base_url(self) -> str:

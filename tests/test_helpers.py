@@ -36,5 +36,40 @@ class ScopeAgentSessionIdTests(unittest.TestCase):
         )
 
 
+class ResolveActiveModelTests(unittest.TestCase):
+    """Protect an explicit HA model choice across coordinator refreshes."""
+
+    def test_prefers_persisted_selection_over_gateway_inventory_default(self) -> None:
+        self.assertEqual(
+            helpers.resolve_active_model("gpt-5", ["claude", "gpt-5"], "claude"),
+            "gpt-5",
+        )
+
+    def test_falls_back_to_gateway_default_when_selection_is_unavailable(self) -> None:
+        self.assertEqual(
+            helpers.resolve_active_model("retired", ["claude", "gpt-5"], "claude"),
+            "claude",
+        )
+
+    def test_falls_back_to_first_available_model_without_gateway_default(self) -> None:
+        self.assertEqual(
+            helpers.resolve_active_model(None, ["claude", "gpt-5"], None),
+            "claude",
+        )
+
+
+class SslRequestParameterTests(unittest.TestCase):
+    """Protect self-signed HTTPS support for lan_https installations."""
+
+    def test_disables_verification_only_for_https_when_requested(self) -> None:
+        self.assertFalse(helpers.ssl_request_parameter(True, False))
+
+    def test_keeps_default_verification_for_https(self) -> None:
+        self.assertIsNone(helpers.ssl_request_parameter(True, True))
+
+    def test_does_not_set_an_ssl_override_for_plain_http(self) -> None:
+        self.assertIsNone(helpers.ssl_request_parameter(False, False))
+
+
 if __name__ == "__main__":
     unittest.main()
