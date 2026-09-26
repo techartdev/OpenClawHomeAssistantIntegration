@@ -5,6 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 
+def scope_agent_session_id(base_id: str, agent_id: str | None) -> str:
+    """Namespace a session key for an OpenClaw agent without double-prefixing."""
+    if not agent_id or base_id.startswith(f"agent:{agent_id}:"):
+        return base_id
+    return f"agent:{agent_id}:{base_id}"
+
+
 def extract_text_recursive(value: Any, depth: int = 0) -> str | None:
     """Recursively extract assistant text from nested response payloads."""
     if depth > 8:
