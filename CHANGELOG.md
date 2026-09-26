@@ -2,7 +2,7 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
-## [0.1.65-rc.3] - 2026-09-26
+## [0.1.65] - 2026-09-26
 
 ### Added
 - Added optional `voice_output_mode: media_player` chat-card output. Replies can
