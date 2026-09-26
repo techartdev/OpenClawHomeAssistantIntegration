@@ -2,6 +2,13 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.64] - 2026-09-26
+
+### Fixed
+- Fixed Assist session keys for selected OpenClaw agents. Session keys now use OpenClaw's required `agent:<id>:<base-session>` format, preventing agent routing from being ignored. (Based on PR #34; fixes #28)
+- Fixed the **Active Model** select entity resetting to the gateway's first listed model during coordinator refreshes. An explicitly selected available model now remains selected. (Fixes #24)
+- Added regression coverage for agent-scoped sessions, active-model selection, and self-signed HTTPS requests with **Verify SSL certificate** disabled.
+
 ## [0.1.63] - 2026-05-31
 
 ### Fixed
