@@ -1806,6 +1806,7 @@ class OpenClawChatCard extends HTMLElement {
     }
 
     try {
+      const initialPlayerState = this._hass?.states?.[mediaPlayer]?.state;
       await this._hass.callService(
         "tts",
         "speak",
@@ -1816,7 +1817,7 @@ class OpenClawChatCard extends HTMLElement {
         },
         { entity_id: engine }
       );
-      await this._waitForMediaPlayerPlayback(mediaPlayer);
+      await this._waitForMediaPlayerPlayback(mediaPlayer, initialPlayerState);
       this._lastHaTtsAttempt = `engine=${engine}, media_player=${mediaPlayer}, ok`;
       return true;
     } catch (err) {
@@ -1827,16 +1828,21 @@ class OpenClawChatCard extends HTMLElement {
     }
   }
 
-  async _waitForMediaPlayerPlayback(entityId) {
+  async _waitForMediaPlayerPlayback(entityId, initialState) {
     const activeStates = new Set(["buffering", "playing"]);
     const startedAt = Date.now();
     const activityDeadline = startedAt + 10_000;
     const timeoutAt = startedAt + 120_000;
-    let sawPlayback = activeStates.has(this._hass?.states?.[entityId]?.state);
+    const initiallyActive = activeStates.has(initialState);
+    let sawPlayback = false;
+    let sawStateChange = false;
 
     while (Date.now() < timeoutAt) {
       const state = this._hass?.states?.[entityId]?.state;
-      if (activeStates.has(state)) {
+      if (state !== initialState) {
+        sawStateChange = true;
+      }
+      if (activeStates.has(state) && (!initiallyActive || sawStateChange)) {
         sawPlayback = true;
       } else if (sawPlayback) {
         return;

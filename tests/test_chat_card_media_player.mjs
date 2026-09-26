@@ -33,10 +33,11 @@ card._config = {
   voice_output_media_player: "media_player.bedroom_speaker",
 };
 card._hass = {
-  states: {},
+  states: { "media_player.bedroom_speaker": { state: "off" } },
   callService: async (...args) => calls.push(args),
 };
-card._waitForMediaPlayerPlayback = async () => {};
+let waitArgs;
+card._waitForMediaPlayerPlayback = async (...args) => { waitArgs = args; };
 
 assert.equal(await card._speakViaMediaPlayer("Hello from OpenClaw"), true);
 assert.deepEqual(calls, [
@@ -51,6 +52,7 @@ assert.deepEqual(calls, [
     { entity_id: "tts.openai_tts" },
   ],
 ]);
+assert.deepEqual(waitArgs, ["media_player.bedroom_speaker", "off"]);
 
 const invalidCard = new Card();
 invalidCard._config = {
