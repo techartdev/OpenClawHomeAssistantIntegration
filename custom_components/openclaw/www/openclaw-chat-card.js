@@ -13,7 +13,7 @@
  * + subscribes to openclaw_message_received events.
  */
 
-const CARD_VERSION = "0.3.13";
+const CARD_VERSION = "0.3.15";
 
 // Max time (ms) to show the thinking indicator before falling back to an error (default; overridable via card config `thinking_timeout` in seconds)
 const THINKING_TIMEOUT_MS = 120_000;
@@ -117,6 +117,7 @@ class OpenClawChatCard extends HTMLElement {
       show_clear_button: config.show_clear_button !== false,
       allow_brave_webspeech: config.allow_brave_webspeech === true,
       voice_provider: config.voice_provider || null,
+      voice_output_mode: config.voice_output_mode || "local",
       session_id: config.session_id || null,
       thinking_timeout: config.thinking_timeout ?? 120,
       ...config,
@@ -1402,6 +1403,22 @@ class OpenClawChatCard extends HTMLElement {
       this._hass?.locale?.language || this._hass?.selectedLanguage || this._hass?.language || navigator.language || "en-US"
     );
 
+    if (this._config?.voice_output_mode === "media_player") {
+      this._voiceStatus = "Speaking through Home Assistant media player…";
+      this._render();
+      this._speakViaMediaPlayer(plain).then((ok) => {
+        if (ok) {
+          this._voiceStatus = "";
+        } else {
+          const reason = this._lastHaTtsAttempt ? ` (${this._lastHaTtsAttempt})` : "";
+          this._voiceStatus = `Media-player TTS unavailable${reason}`;
+        }
+        this._render();
+        this._resumeVoiceInputAfterTts();
+      });
+      return;
+    }
+
     if (!hasBrowserTts) {
       this._voiceStatus = "Browser TTS unavailable, trying Home Assistant TTS…";
       this._render();
@@ -1763,6 +1780,78 @@ class OpenClawChatCard extends HTMLElement {
       this._lastHaTtsAttempt =
         `engine=${selectedEngine}, lang=${selectedLanguage || "auto"}, audio_playback_failed`;
       return false;
+    }
+  }
+
+  async _speakViaMediaPlayer(text) {
+    if (!this._hass?.callService) return false;
+
+    this._lastHaTtsAttempt = null;
+    const engine =
+      typeof this._config?.ha_tts_engine === "string"
+        ? this._config.ha_tts_engine.trim()
+        : "";
+    const mediaPlayer =
+      typeof this._config?.voice_output_media_player === "string"
+        ? this._config.voice_output_media_player.trim()
+        : "";
+
+    if (!engine || !engine.startsWith("tts.")) {
+      this._lastHaTtsAttempt = "ha_tts_engine_must_be_a_tts_entity";
+      return false;
+    }
+    if (!mediaPlayer || !mediaPlayer.startsWith("media_player.")) {
+      this._lastHaTtsAttempt = "voice_output_media_player_must_be_a_media_player_entity";
+      return false;
+    }
+
+    try {
+      const initialPlayerState = this._hass?.states?.[mediaPlayer]?.state;
+      await this._hass.callService(
+        "tts",
+        "speak",
+        {
+          media_player_entity_id: mediaPlayer,
+          message: text,
+          cache: true,
+        },
+        { entity_id: engine }
+      );
+      await this._waitForMediaPlayerPlayback(mediaPlayer, initialPlayerState);
+      this._lastHaTtsAttempt = `engine=${engine}, media_player=${mediaPlayer}, ok`;
+      return true;
+    } catch (err) {
+      console.debug("OpenClaw: media-player TTS failed", err);
+      this._lastHaTtsAttempt =
+        `engine=${engine}, media_player=${mediaPlayer}, service_call_failed`;
+      return false;
+    }
+  }
+
+  async _waitForMediaPlayerPlayback(entityId, initialState) {
+    const activeStates = new Set(["buffering", "playing"]);
+    const startedAt = Date.now();
+    const activityDeadline = startedAt + 10_000;
+    const timeoutAt = startedAt + 120_000;
+    const initiallyActive = activeStates.has(initialState);
+    let sawPlayback = false;
+    let sawStateChange = false;
+
+    while (Date.now() < timeoutAt) {
+      const state = this._hass?.states?.[entityId]?.state;
+      if (state !== initialState) {
+        sawStateChange = true;
+      }
+      if (activeStates.has(state) && (!initiallyActive || sawStateChange)) {
+        sawPlayback = true;
+      } else if (sawPlayback) {
+        return;
+      } else if (Date.now() >= activityDeadline) {
+        // Some players complete short clips without exposing a playing state to
+        // the frontend. Avoid blocking voice input for the full timeout.
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
 
@@ -2232,7 +2321,7 @@ class OpenClawChatCardEditor extends HTMLElement {
         :host { display: block; }
         .row { display: flex; align-items: center; padding: 8px 0; }
         .row label { flex: 1; font-size: 14px; color: var(--primary-text-color); }
-        .row input[type="text"] {
+        .row input[type="text"], .row select {
           flex: 1;
           padding: 6px 10px;
           border: 1px solid var(--divider-color, #ccc);
@@ -2259,6 +2348,21 @@ class OpenClawChatCardEditor extends HTMLElement {
           <input type="text" id="session_id" value="${this._esc(c.session_id || "")}" />
         </div>
         <div class="row">
+          <label for="voice_output_mode">Voice output mode</label>
+          <select id="voice_output_mode">
+            <option value="local" ${c.voice_output_mode !== "media_player" ? "selected" : ""}>This device</option>
+            <option value="media_player" ${c.voice_output_mode === "media_player" ? "selected" : ""}>Home Assistant media player</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="ha_tts_engine">TTS entity (for example tts.openai_tts)</label>
+          <input type="text" id="ha_tts_engine" value="${this._esc(c.ha_tts_engine || "")}" />
+        </div>
+        <div class="row">
+          <label for="voice_output_media_player">Media player entity</label>
+          <input type="text" id="voice_output_media_player" value="${this._esc(c.voice_output_media_player || "")}" />
+        </div>
+        <div class="row">
           <label for="show_timestamps">Show timestamps</label>
           <input type="checkbox" id="show_timestamps" ${c.show_timestamps !== false ? "checked" : ""} />
         </div>
@@ -2274,7 +2378,14 @@ class OpenClawChatCardEditor extends HTMLElement {
     `;
 
     // Bind events
-    for (const id of ["title", "height", "session_id"]) {
+    for (const id of [
+      "title",
+      "height",
+      "session_id",
+      "voice_output_mode",
+      "ha_tts_engine",
+      "voice_output_media_player",
+    ]) {
       const el = this.shadowRoot.getElementById(id);
       if (el) {
         el.addEventListener("change", (e) => this._fireChanged(id, e.target.value));

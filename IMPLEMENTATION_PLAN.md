@@ -14,7 +14,7 @@ This plan reflects the actual implementation status as of release `0.1.34`.
 | 4 | Lovelace chat card (text + voice) | P0 | ✅ Done |
 | 5 | Voice provider choice (`browser` / `assist_stt`) | P0 | ✅ Done |
 | 6 | Production polish and broad compatibility hardening | P1 | 🚧 In progress |
-| 7 | Optional native media player/TTS routing entity | P2 | ⏳ Not started |
+| 7 | Optional Home Assistant media-player TTS routing | P2 | ✅ Done |
 
 ---
 
@@ -144,9 +144,8 @@ OpenClawHomeAssistantIntegration/
 
 ### R3 — Optional enhancements (after stabilization)
 
-1. Evaluate media-player based TTS routing entity.
-2. Explore optional continuous flow for HA STT/TTS pipeline mode.
-3. Add automated tests around settings websocket payload and card voice state transitions.
+1. Explore optional continuous flow for HA STT/TTS pipeline mode.
+2. Add broader automated tests around settings websocket payload and card voice state transitions.
 
 ---
 

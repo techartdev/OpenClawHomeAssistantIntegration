@@ -148,6 +148,9 @@ show_timestamps: true
 show_voice_button: true
 show_clear_button: true
 session_id: default
+voice_output_mode: media_player
+ha_tts_engine: tts.openai_tts
+voice_output_media_player: media_player.bedroom_speaker
 ```
 
 Minimal config:
@@ -155,6 +158,23 @@ Minimal config:
 ```yaml
 type: custom:openclaw-chat-card
 ```
+
+### Voice output
+
+By default, the card speaks on the device displaying Home Assistant. To avoid
+mobile WebView audio restrictions, set `voice_output_mode: media_player` and
+select a Home Assistant TTS entity plus a target media player:
+
+```yaml
+type: custom:openclaw-chat-card
+voice_output_mode: media_player
+ha_tts_engine: tts.openai_tts
+voice_output_media_player: media_player.bedroom_speaker
+```
+
+In media-player mode the card calls `tts.speak` and pauses continuous voice
+recognition until playback finishes (with a timeout fallback for players that
+do not report playback state).
 
 ---
 
@@ -187,6 +207,17 @@ Open **Settings → Devices & Services → OpenClaw → Configure**.
 - **Enable tool calls**
 
 When enabled, OpenClaw tool-call responses can execute Home Assistant services.
+
+These options only control data and actions handled by this Home Assistant
+integration:
+
+- Disabling exposed-entity context stops the integration from adding HA entity
+  state to the prompt. It does not clear OpenClaw's conversation history or
+  change OpenClaw/MCP context.
+- The maximum context size applies only to the exposed HA entity block.
+- Disabling tool calls prevents this integration from executing returned Home
+  Assistant service calls. It does not disable tools or MCP servers configured
+  inside OpenClaw itself.
 
 ### Voice options
 
@@ -410,4 +441,3 @@ MIT. See [LICENSE](LICENSE).
 
 If you find this useful and you want to bring me a coffee to make more nice stuff, or support the project, use the link below:
 - https://revolut.me/vanyo6dhw
-
