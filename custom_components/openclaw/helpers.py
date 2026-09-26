@@ -12,6 +12,28 @@ def scope_agent_session_id(base_id: str, agent_id: str | None) -> str:
     return f"agent:{agent_id}:{base_id}"
 
 
+def resolve_active_model(
+    preferred_model: str | None,
+    available_models: list[str],
+    gateway_model: str | None,
+) -> str | None:
+    """Choose the persisted model when it remains available.
+
+    The gateway's first model is an inventory default, not a replacement for
+    a model explicitly selected in Home Assistant.
+    """
+    if preferred_model and preferred_model in available_models:
+        return preferred_model
+    if gateway_model and gateway_model in available_models:
+        return gateway_model
+    return available_models[0] if available_models else None
+
+
+def ssl_request_parameter(use_ssl: bool, verify_ssl: bool) -> bool | None:
+    """Return aiohttp's per-request SSL verification setting."""
+    return False if use_ssl and not verify_ssl else None
+
+
 def extract_text_recursive(value: Any, depth: int = 0) -> str | None:
     """Recursively extract assistant text from nested response payloads."""
     if depth > 8:

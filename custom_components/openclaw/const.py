@@ -26,6 +26,7 @@ CONF_ADDON_CONFIG_PATH = "addon_config_path"
 CONF_AGENT_ID = "agent_id"
 CONF_VOICE_AGENT_ID = "voice_agent_id"
 CONF_ASSIST_SESSION_ID = "assist_session_id"
+CONF_ACTIVE_MODEL = "active_model"
 
 # Options
 CONF_INCLUDE_EXPOSED_CONTEXT = "include_exposed_context"
