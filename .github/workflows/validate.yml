@@ -1,0 +1,34 @@
+name: Validate integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Run dependency-free regression tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Check Python syntax
+        run: |
+          find custom_components -name '*.py' -print0 | \
+            xargs -0 -n1 python -c 'import ast, sys; ast.parse(open(sys.argv[1], encoding="utf-8").read())'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check chat-card syntax
+        run: node --check custom_components/openclaw/www/openclaw-chat-card.js
