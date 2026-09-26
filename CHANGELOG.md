@@ -2,6 +2,16 @@
 
 All notable changes to the OpenClaw Home Assistant Integration will be documented in this file.
 
+## [0.1.65-rc.2] - 2026-09-26
+
+### Added
+- Added optional `voice_output_mode: media_player` chat-card output. Replies can
+  now be sent through Home Assistant `tts.speak` using configured
+  `ha_tts_engine` and `voice_output_media_player` entities, bypassing unreliable
+  Android/iOS WebView audio playback (issues #1 and #29).
+- Added matching visual card-editor fields and playback-state waiting so
+  continuous voice recognition does not immediately capture the spoken reply.
+
 ## [0.1.64] - 2026-09-26
 
 ### Fixed
