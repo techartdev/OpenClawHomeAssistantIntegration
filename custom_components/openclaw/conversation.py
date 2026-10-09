@@ -40,7 +40,11 @@ from .const import (
 )
 from .coordinator import OpenClawCoordinator
 from .exposure import apply_context_policy, build_exposed_entities_context
-from .helpers import extract_text_recursive, scope_agent_session_id
+from .helpers import (
+    extract_text_recursive,
+    scope_agent_session_id,
+    strip_markdown_for_speech,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -223,7 +227,10 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
         coordinator.update_last_activity()
 
         intent_response = intent.IntentResponse(language=user_input.language)
-        intent_response.async_set_speech(full_response)
+        # Assist sends this straight to TTS, so markdown markup must not survive
+        # here (otherwise "**bold**" is spoken as "asterisk asterisk bold ...").
+        # The event above and the chat card keep the original response text.
+        intent_response.async_set_speech(strip_markdown_for_speech(full_response))
 
         return conversation.ConversationResult(
             response=intent_response,
