@@ -71,5 +71,52 @@ class SslRequestParameterTests(unittest.TestCase):
         self.assertIsNone(helpers.ssl_request_parameter(False, False))
 
 
+class StripMarkdownForSpeechTests(unittest.TestCase):
+    """Protect the speech text that Assist hands to text-to-speech."""
+
+    def test_removes_bold_markup_around_cjk_text(self) -> None:
+        self.assertEqual(
+            helpers.strip_markdown_for_speech("**卧室三**：23.3℃ / 湿度 61%"),
+            "卧室三：23.3℃ / 湿度 61%",
+        )
+
+    def test_removes_a_full_reported_response(self) -> None:
+        response = (
+            "🔹**有完整数据的区域**-**车库**：26.7℃ / 湿度 71%"
+            " 两点提醒：1. 阳台湿度报 100%，建议检查探头。"
+        )
+        cleaned = helpers.strip_markdown_for_speech(response)
+
+        self.assertNotIn("**", cleaned)
+        self.assertIn("车库", cleaned)
+        self.assertIn("🔹", cleaned)
+        self.assertIn("26.7℃", cleaned)
+
+    def test_removes_headings_bullets_and_quotes_at_line_start(self) -> None:
+        cleaned = helpers.strip_markdown_for_speech(
+            "# 报告\n- 温度 23℃\n* 湿度 61%\n1. 正常\n> 备注"
+        )
+        self.assertEqual(cleaned, "报告\n温度 23℃\n湿度 61%\n正常\n备注")
+
+    def test_keeps_link_text_and_inline_code_content(self) -> None:
+        self.assertEqual(
+            helpers.strip_markdown_for_speech("详见 [说明书](https://example.com) 的 `open` 参数"),
+            "详见 说明书 的 open 参数",
+        )
+
+    def test_leaves_arithmetic_untouched(self) -> None:
+        self.assertEqual(helpers.strip_markdown_for_speech("3*4=12"), "3*4=12")
+
+    def test_leaves_plain_text_untouched(self) -> None:
+        plain = "车库 26.7 度，湿度 71%。"
+        self.assertEqual(helpers.strip_markdown_for_speech(plain), plain)
+
+    def test_handles_empty_input(self) -> None:
+        self.assertEqual(helpers.strip_markdown_for_speech(""), "")
+
+    def test_removes_unbalanced_emphasis_runs(self) -> None:
+        self.assertEqual(helpers.strip_markdown_for_speech("**未闭合的加粗"), "未闭合的加粗")
+
+
 if __name__ == "__main__":
     unittest.main()
