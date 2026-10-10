@@ -231,6 +231,7 @@ integration:
 - **Active Model** select entity controls the model override used for chat-card and Assist requests.
 - If no model is selected, the gateway default is used.
 - Assist conversation IDs are conservatively namespaced by agent ID so different agents do not accidentally share the same conversation context.
+- When a signed-in Home Assistant user is known, the Assist session key carries it (`assist_user_<id>:<conversation>`), so the agent can tell who is speaking while each conversation keeps its own session.
 
 ### Voice provider usage
 

@@ -12,6 +12,32 @@ def scope_agent_session_id(base_id: str, agent_id: str | None) -> str:
     return f"agent:{agent_id}:{base_id}"
 
 
+def assist_base_session_id(
+    conversation_id: str | None,
+    user_id: str | None,
+    device_id: str | None,
+) -> str:
+    """Pick the unscoped Assist session id without dropping the signed-in user.
+
+    The pipeline sends a conversation id on every turn, which used to hide the user.
+    """
+    if user_id:
+        user_base = f"assist_user_{user_id}"
+        if not conversation_id:
+            return user_base
+        if (
+            conversation_id.startswith(f"{user_base}:")
+            or f":{user_base}:" in conversation_id
+        ):
+            return conversation_id
+        return f"{user_base}:{conversation_id}"
+    if conversation_id:
+        return conversation_id
+    if device_id:
+        return f"assist_device_{device_id}"
+    return "assist_default"
+
+
 def resolve_active_model(
     preferred_model: str | None,
     available_models: list[str],

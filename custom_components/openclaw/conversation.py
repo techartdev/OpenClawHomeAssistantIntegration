@@ -40,7 +40,11 @@ from .const import (
 )
 from .coordinator import OpenClawCoordinator
 from .exposure import apply_context_policy, build_exposed_entities_context
-from .helpers import extract_text_recursive, scope_agent_session_id
+from .helpers import (
+    assist_base_session_id,
+    extract_text_recursive,
+    scope_agent_session_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -247,22 +251,13 @@ class OpenClawConversationAgent(conversation.AbstractConversationAgent):
             return configured_session_id
 
         agent_suffix = self._normalize_optional_text(agent_id)
-
-        if user_input.conversation_id:
-            return scope_agent_session_id(user_input.conversation_id, agent_suffix)
-
         context = getattr(user_input, "context", None)
-        user_id = getattr(context, "user_id", None)
-        if user_id:
-            base_id = f"assist_user_{user_id}"
-            return scope_agent_session_id(base_id, agent_suffix)
-
-        device_id = getattr(user_input, "device_id", None)
-        if device_id:
-            base_id = f"assist_device_{device_id}"
-            return scope_agent_session_id(base_id, agent_suffix)
-
-        return scope_agent_session_id("assist_default", agent_suffix)
+        base_id = assist_base_session_id(
+            user_input.conversation_id,
+            getattr(context, "user_id", None),
+            getattr(user_input, "device_id", None),
+        )
+        return scope_agent_session_id(base_id, agent_suffix)
 
     def _normalize_optional_text(self, value: Any) -> str | None:
         """Return a stripped string or None for blank values."""

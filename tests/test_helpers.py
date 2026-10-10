@@ -36,6 +36,60 @@ class ScopeAgentSessionIdTests(unittest.TestCase):
         )
 
 
+class AssistBaseSessionIdTests(unittest.TestCase):
+    """Keep the signed-in HA user in the key when HA sends a conversation id."""
+
+    def test_user_and_conversation_are_both_kept(self) -> None:
+        self.assertEqual(
+            helpers.assist_base_session_id("01m4hf34nxm64w74ab60v9pbrc", "abc", "dev1"),
+            "assist_user_abc:01m4hf34nxm64w74ab60v9pbrc",
+        )
+
+    def test_follow_up_turn_is_not_prefixed_twice(self) -> None:
+        self.assertEqual(
+            helpers.assist_base_session_id("assist_user_abc:01m4", "abc", None),
+            "assist_user_abc:01m4",
+        )
+        self.assertEqual(
+            helpers.assist_base_session_id("agent:home:assist_user_abc:01m4", "abc", None),
+            "agent:home:assist_user_abc:01m4",
+        )
+
+    def test_user_without_conversation(self) -> None:
+        self.assertEqual(
+            helpers.assist_base_session_id(None, "abc", "dev1"),
+            "assist_user_abc",
+        )
+
+    def test_conversation_id_without_a_user(self) -> None:
+        self.assertEqual(
+            helpers.assist_base_session_id("01m4hf34nxm64w74ab60v9pbrc", None, "dev1"),
+            "01m4hf34nxm64w74ab60v9pbrc",
+        )
+
+    def test_device_without_user_or_conversation(self) -> None:
+        self.assertEqual(
+            helpers.assist_base_session_id(None, None, "dev1"),
+            "assist_device_dev1",
+        )
+
+    def test_default_when_nothing_is_known(self) -> None:
+        self.assertEqual(
+            helpers.assist_base_session_id(None, None, None),
+            "assist_default",
+        )
+
+    def test_scoped_follow_up_stays_stable(self) -> None:
+        first = helpers.scope_agent_session_id(
+            helpers.assist_base_session_id("01m4", "abc", None), "home"
+        )
+        again = helpers.scope_agent_session_id(
+            helpers.assist_base_session_id(first, "abc", None), "home"
+        )
+        self.assertEqual(first, "agent:home:assist_user_abc:01m4")
+        self.assertEqual(again, first)
+
+
 class ResolveActiveModelTests(unittest.TestCase):
     """Protect an explicit HA model choice across coordinator refreshes."""
 
