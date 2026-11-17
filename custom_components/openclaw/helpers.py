@@ -6,10 +6,21 @@ from typing import Any
 
 
 def scope_agent_session_id(base_id: str, agent_id: str | None) -> str:
-    """Namespace a session key for an OpenClaw agent without double-prefixing."""
-    if not agent_id or base_id.startswith(f"agent:{agent_id}:"):
-        return base_id
-    return f"agent:{agent_id}:{base_id}"
+    """Namespace a session key for an OpenClaw agent without double-prefixing.
+
+    OpenClaw session keys are canonically lowercase. Home Assistant hands out
+    conversation ids as uppercase ULIDs, and an uppercase base id is echoed
+    back into the request envelope, refused on the session write, and rewritten
+    on the next turn. That rewrite breaks the append-only history the provider
+    prompt cache depends on, so every turn re-prefills the whole prompt.
+    """
+    key = base_id.lower()
+    if not agent_id:
+        return key
+    prefix = f"agent:{agent_id.lower()}:"
+    if key.startswith(prefix):
+        return key
+    return f"{prefix}{key}"
 
 
 def resolve_active_model(
