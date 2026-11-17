@@ -35,6 +35,20 @@ class ScopeAgentSessionIdTests(unittest.TestCase):
             "agent:home:assist_user_123",
         )
 
+    def test_lowercases_an_uppercase_ha_conversation_id(self) -> None:
+        self.assertEqual(
+            helpers.scope_agent_session_id("01M7KF8J84WTQTZWH6FCDSP4GN", "voice"),
+            "agent:voice:01m7kf8j84wtqtzwh6fcdsp4gn",
+        )
+
+    def test_lowercases_an_already_scoped_uppercase_key(self) -> None:
+        self.assertEqual(
+            helpers.scope_agent_session_id(
+                "agent:voice:01M7KF8J84WTQTZWH6FCDSP4GN", "voice"
+            ),
+            "agent:voice:01m7kf8j84wtqtzwh6fcdsp4gn",
+        )
+
 
 class ResolveActiveModelTests(unittest.TestCase):
     """Protect an explicit HA model choice across coordinator refreshes."""
